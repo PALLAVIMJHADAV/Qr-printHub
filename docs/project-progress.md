@@ -4,8 +4,8 @@
 
 | Phase | Milestone | Focus Area | Status |
 | :---: | :--- | :--- | :---: |
-| **Phase 1** | **Engineering Harness Setup** | Rules, roles, quality gates, docs, git controls, docker services | **In Progress** |
-| **Phase 2** | **Core Database & Schema** | Drizzle ORM, multi-tenant tables, migrations, seeds, test DB | Planned |
+| **Phase 1** | **Engineering Harness Setup** | Rules, roles, quality gates, docs, git controls, docker services | **Completed** |
+| **Phase 2** | **Core Database & Schema** | Drizzle ORM, multi-tenant tables, migrations, seeds, test DB | **Up Next** |
 | **Phase 3** | **Auth & Merchant Management** | JWT/RBAC, shop profiles, QR generation, rate card catalog | Planned |
 | **Phase 4** | **Document Storage & Pricing** | Presigned S3 uploads, PDF page inspector, authoritative pricing | Planned |
 | **Phase 5** | **Orders & Payment Verification** | Order state machine, checkout, idempotent webhooks | Planned |
@@ -24,13 +24,14 @@
 - [x] Establish `AGENTS.md` master engineering constitution.
 - [x] Define `docker-compose.yml` for local backing services (PostgreSQL 16, Redis 7, MinIO S3).
 - [x] Author comprehensive documentation suite (`architecture.md`, `development-setup.md`, `technical-decisions.md`, `api-contracts.md`).
-- [ ] Author pull request template `.github/pull_request_template.md`.
-- [ ] Author continuous integration pipeline `.github/workflows/ci.yml`.
-- [ ] Author automated security scanner `.github/workflows/security-scan.yml`.
-- [ ] Author specialized agent roles (`.agents/roles/*.md`).
-- [ ] Author engineering checklists (`.agents/checklists/*.md`).
-- [ ] Validate harness with Docker config and Git staging review.
-- [ ] Create initial commit on `feat/harness-setup`.
+- [x] Author pull request template `.github/pull_request_template.md`.
+- [x] Author continuous integration pipeline `.github/workflows/ci.yml`.
+- [x] Author automated security scanner `.github/workflows/security-scan.yml`.
+- [x] Author specialized agent roles (`.agents/roles/*.md`).
+- [x] Author engineering checklists (`.agents/checklists/*.md`).
+- [x] Validate harness with Docker config and Git staging review.
+- [x] Start and verify backing services via Docker Compose (Postgres, Redis, MinIO with private bucket).
+- [x] Create commit on `feat/harness-setup` and push to remote `origin` on GitHub.
 
 ---
 
