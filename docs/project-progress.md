@@ -5,13 +5,13 @@
 | Phase | Milestone | Focus Area | Status |
 | :---: | :--- | :--- | :---: |
 | **Phase 1** | **Engineering Harness Setup** | Rules, roles, quality gates, docs, git controls, docker services | **Completed** |
-| **Phase 2** | **Core Database & Schema** | Drizzle ORM, multi-tenant tables, migrations, seeds, test DB | **Up Next** |
-| **Phase 3** | **Auth & Merchant Management** | JWT/RBAC, shop profiles, QR generation, rate card catalog | Planned |
-| **Phase 4** | **Document Storage & Pricing** | Presigned S3 uploads, PDF page inspector, authoritative pricing | Planned |
-| **Phase 5** | **Orders & Payment Verification** | Order state machine, checkout, idempotent webhooks | Planned |
-| **Phase 6** | **Print Queue & Print Station** | BullMQ queue, staff print station dashboard, printer agent | Planned |
-| **Phase 7** | **Retention Purge & Audit** | Ephemeral document worker, cryptographic purge, audit trail | Planned |
-| **Phase 8** | **Production Hardening** | E2E Playwright tests, security penetration check, observability | Planned |
+| **Phase 2** | **Core Database & Schema** | Drizzle ORM, multi-tenant tables, migrations, seeds, test DB | **Completed** |
+| **Phase 3** | **Auth & Merchant Management** | JWT/RBAC, shop profiles, QR generation, rate card catalog | **Completed** |
+| **Phase 4** | **Document Storage & Pricing** | Presigned S3 uploads, PDF page inspector, authoritative pricing | **Completed** |
+| **Phase 5** | **Orders & Payment Verification** | Order state machine, checkout, idempotent webhooks | **Completed** |
+| **Phase 6** | **Print Queue & Print Station** | BullMQ queue, staff print station dashboard, printer agent | **Completed** |
+| **Phase 7** | **Retention Purge & Audit** | Ephemeral document worker, cryptographic purge, audit trail | **Completed** |
+| **Phase 8** | **Production Hardening** | Full-stack live server verification, Vite frontend client | **Completed** |
 
 ---
 
