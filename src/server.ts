@@ -11,6 +11,7 @@ import { DocumentService } from './modules/documents/document.service.js';
 import { PricingService } from './modules/pricing/pricing.service.js';
 import { OrderService } from './modules/orders/order.service.js';
 import { PrintStationService } from './modules/print-stations/print-station.service.js';
+import { PlatformService } from './modules/platform/platform.service.js';
 
 export async function buildServer() {
   const app = Fastify({
@@ -270,6 +271,42 @@ export async function buildServer() {
   app.post('/api/v1/admin/purge-expired', async () => {
     const count = await DocumentService.purgeExpiredDocuments();
     return { success: true, purgedCount: count };
+  });
+
+  // ============================================================================
+  // PLATFORM SUPER ADMIN (SaaS Creator - Managing Merchants & Subscriptions)
+  // ============================================================================
+  app.get('/api/v1/platform/analytics', async () => {
+    const analytics = await PlatformService.getPlatformAnalytics();
+    return { success: true, data: analytics };
+  });
+
+  app.get('/api/v1/platform/merchants', async () => {
+    const merchantsList = await PlatformService.listMerchants();
+    return { success: true, data: merchantsList };
+  });
+
+  app.post('/api/v1/platform/merchants', async (request, reply) => {
+    const schema = z.object({
+      businessName: z.string().min(2),
+      ownerEmail: z.string().email(),
+      ownerName: z.string().min(2),
+      subscriptionTier: z.enum(['STARTER', 'PRO', 'ENTERPRISE']).default('PRO'),
+      initialShopName: z.string().min(2),
+      city: z.string().default('Mumbai'),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ success: false, error: parsed.error.format() });
+    }
+
+    try {
+      const result = await PlatformService.createMerchant(parsed.data);
+      return reply.status(201).send({ success: true, data: result });
+    } catch (err: any) {
+      return reply.status(400).send({ success: false, error: { message: err.message } });
+    }
   });
 
   return app;
