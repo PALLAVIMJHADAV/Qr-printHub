@@ -5,7 +5,7 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { z } from 'zod';
 import { config } from './core/config/index.js';
-import { AuthService } from './modules/auth/auth.service.js';
+import { AuthService, authenticate, requireRoles, enforceShopScope } from './modules/auth/index.js';
 import { ShopService } from './modules/shops/shop.service.js';
 import { DocumentService } from './modules/documents/document.service.js';
 import { PricingService } from './modules/pricing/pricing.service.js';
@@ -83,7 +83,14 @@ export async function buildServer() {
     try {
       const user = await AuthService.login(parsed.data.email, parsed.data.password);
       const token = app.jwt.sign(
-        { id: user.id, role: user.role, merchantId: user.merchantId, shopId: user.shopId },
+        {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          merchantId: user.merchantId,
+          shopId: user.shopId,
+        },
         { expiresIn: config.JWT_ACCESS_TTL }
       );
 
@@ -94,6 +101,13 @@ export async function buildServer() {
     } catch (err: any) {
       return reply.status(401).send({ success: false, error: { message: err.message } });
     }
+  });
+
+  app.get('/api/v1/auth/me', { preHandler: [authenticate] }, async (request, reply) => {
+    return reply.send({
+      success: true,
+      data: request.user,
+    });
   });
 
   // ============================================================================
@@ -225,68 +239,95 @@ export async function buildServer() {
   // ============================================================================
   // STAFF PRINT STATIONS
   // ============================================================================
-  app.get('/api/v1/print-stations/queue', async (request, reply) => {
-    const { shopId } = request.query as { shopId?: string };
-    if (!shopId) {
-      return reply.status(400).send({ success: false, error: { message: 'shopId query parameter is required' } });
+  app.get(
+    '/api/v1/print-stations/queue',
+    { preHandler: [authenticate, requireRoles('SHOP_STAFF', 'MERCHANT_ADMIN', 'PLATFORM_ADMIN'), enforceShopScope] },
+    async (request, reply) => {
+      const { shopId } = request.query as { shopId?: string };
+      if (!shopId) {
+        return reply.status(400).send({ success: false, error: { message: 'shopId query parameter is required' } });
+      }
+
+      const queue = await PrintStationService.getQueue(shopId);
+      return reply.send({ success: true, data: queue });
     }
+  );
 
-    const queue = await PrintStationService.getQueue(shopId);
-    return reply.send({ success: true, data: queue });
-  });
+  app.get(
+    '/api/v1/print-stations/jobs/:jobId/download-ticket',
+    { preHandler: [authenticate, requireRoles('SHOP_STAFF', 'MERCHANT_ADMIN', 'PLATFORM_ADMIN'), enforceShopScope] },
+    async (request, reply) => {
+      const { jobId } = request.params as { jobId: string };
+      const { shopId } = request.query as { shopId?: string };
 
-  app.get('/api/v1/print-stations/jobs/:jobId/download-ticket', async (request, reply) => {
-    const { jobId } = request.params as { jobId: string };
-    const { shopId } = request.query as { shopId?: string };
+      if (!shopId) {
+        return reply.status(400).send({ success: false, error: { message: 'shopId query parameter is required' } });
+      }
 
-    if (!shopId) {
-      return reply.status(400).send({ success: false, error: { message: 'shopId query parameter is required' } });
+      try {
+        const ticket = await PrintStationService.getDownloadTicket(jobId, shopId);
+        return reply.send({ success: true, data: ticket });
+      } catch (err: any) {
+        return reply.status(400).send({ success: false, error: { message: err.message } });
+      }
     }
+  );
 
-    try {
-      const ticket = await PrintStationService.getDownloadTicket(jobId, shopId);
-      return reply.send({ success: true, data: ticket });
-    } catch (err: any) {
-      return reply.status(400).send({ success: false, error: { message: err.message } });
+  app.post(
+    '/api/v1/print-stations/jobs/:jobId/complete',
+    { preHandler: [authenticate, requireRoles('SHOP_STAFF', 'MERCHANT_ADMIN', 'PLATFORM_ADMIN'), enforceShopScope] },
+    async (request, reply) => {
+      const { jobId } = request.params as { jobId: string };
+      const { shopId } = request.query as { shopId?: string };
+
+      if (!shopId) {
+        return reply.status(400).send({ success: false, error: { message: 'shopId query parameter is required' } });
+      }
+
+      try {
+        const result = await PrintStationService.completeJob(jobId, shopId);
+        return reply.send({ success: true, data: result });
+      } catch (err: any) {
+        return reply.status(400).send({ success: false, error: { message: err.message } });
+      }
     }
-  });
-
-  app.post('/api/v1/print-stations/jobs/:jobId/complete', async (request, reply) => {
-    const { jobId } = request.params as { jobId: string };
-    const { shopId } = request.query as { shopId?: string };
-
-    if (!shopId) {
-      return reply.status(400).send({ success: false, error: { message: 'shopId query parameter is required' } });
-    }
-
-    try {
-      const result = await PrintStationService.completeJob(jobId, shopId);
-      return reply.send({ success: true, data: result });
-    } catch (err: any) {
-      return reply.status(400).send({ success: false, error: { message: err.message } });
-    }
-  });
+  );
 
   // Periodic Purge Trigger
-  app.post('/api/v1/admin/purge-expired', async () => {
-    const count = await DocumentService.purgeExpiredDocuments();
-    return { success: true, purgedCount: count };
-  });
+  app.post(
+    '/api/v1/admin/purge-expired',
+    { preHandler: [authenticate, requireRoles('PLATFORM_ADMIN')] },
+    async () => {
+      const count = await DocumentService.purgeExpiredDocuments();
+      return { success: true, purgedCount: count };
+    }
+  );
 
   // ============================================================================
   // PLATFORM SUPER ADMIN (SaaS Creator - Managing Merchants & Subscriptions)
   // ============================================================================
-  app.get('/api/v1/platform/analytics', async () => {
-    const analytics = await PlatformService.getPlatformAnalytics();
-    return { success: true, data: analytics };
-  });
+  app.get(
+    '/api/v1/platform/analytics',
+    { preHandler: [authenticate, requireRoles('PLATFORM_ADMIN')] },
+    async () => {
+      const analytics = await PlatformService.getPlatformAnalytics();
+      return { success: true, data: analytics };
+    }
+  );
 
-  app.get('/api/v1/platform/merchants', async () => {
-    const merchantsList = await PlatformService.listMerchants();
-    return { success: true, data: merchantsList };
-  });
+  app.get(
+    '/api/v1/platform/merchants',
+    { preHandler: [authenticate, requireRoles('PLATFORM_ADMIN')] },
+    async () => {
+      const merchantsList = await PlatformService.listMerchants();
+      return { success: true, data: merchantsList };
+    }
+  );
 
-  app.post('/api/v1/platform/merchants', async (request, reply) => {
+  app.post(
+    '/api/v1/platform/merchants',
+    { preHandler: [authenticate, requireRoles('PLATFORM_ADMIN')] },
+    async (request, reply) => {
     const schema = z.object({
       businessName: z.string().min(2),
       ownerEmail: z.string().email(),

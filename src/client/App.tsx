@@ -23,6 +23,10 @@ import {
   ArrowRight,
   Globe,
   Sparkles,
+  Lock,
+  LogOut,
+  UserCheck,
+  ShieldAlert,
 } from 'lucide-react';
 import QRCode from 'qrcode';
 
@@ -90,6 +94,15 @@ interface PrintJob {
     duplexMode: string;
     copies: number;
   }>;
+}
+
+interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  role: 'PLATFORM_ADMIN' | 'MERCHANT_ADMIN' | 'SHOP_STAFF';
+  merchantId?: string | null;
+  shopId?: string | null;
 }
 
 // Helper to determine active route from URL path or query params
@@ -181,12 +194,70 @@ export default function App() {
   const [isProcessingPayment, setIsProcessingPayment] = useState<boolean>(false);
   const [activeOrder, setActiveOrder] = useState<{ orderCode: string; status: string } | null>(null);
 
-  // Load Platform & Shop Data
-  const loadPlatformData = async () => {
+  // Authentication & RBAC State
+  const [authToken, setAuthToken] = useState<string | null>(() => localStorage.getItem('qrprint_token'));
+  const [authUser, setAuthUser] = useState<AuthUser | null>(() => {
     try {
+      const saved = localStorage.getItem('qrprint_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
+  const [loginEmail, setLoginEmail] = useState<string>('admin@qrprinthub.com');
+  const [loginPassword, setLoginPassword] = useState<string>('Password123!');
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
+
+  // Authenticated login action
+  const handleLogin = async (emailOverride?: string, passwordOverride?: string) => {
+    setIsLoggingIn(true);
+    setLoginError(null);
+    const email = emailOverride || loginEmail;
+    const password = passwordOverride || loginPassword;
+
+    try {
+      const res = await fetch('/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAuthToken(data.data.token);
+        setAuthUser(data.data.user);
+        localStorage.setItem('qrprint_token', data.data.token);
+        localStorage.setItem('qrprint_user', JSON.stringify(data.data.user));
+        setShowLoginModal(false);
+        await loadPlatformData(data.data.token);
+      } else {
+        setLoginError(data.error?.message || 'Invalid email or password');
+      }
+    } catch (err: any) {
+      setLoginError(err.message || 'Login connection failed');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setAuthToken(null);
+    setAuthUser(null);
+    localStorage.removeItem('qrprint_token');
+    localStorage.removeItem('qrprint_user');
+  };
+
+  // Load Platform & Shop Data with RBAC token
+  const loadPlatformData = async (token?: string | null) => {
+    const activeToken = token !== undefined ? token : authToken;
+    try {
+      const headers: Record<string, string> = {};
+      if (activeToken) headers['Authorization'] = `Bearer ${activeToken}`;
+
       const [statsRes, merchRes] = await Promise.all([
-        fetch('/api/v1/platform/analytics'),
-        fetch('/api/v1/platform/merchants'),
+        fetch('/api/v1/platform/analytics', { headers }),
+        fetch('/api/v1/platform/merchants', { headers }),
       ]);
       const statsData = await statsRes.json();
       const merchData = await merchRes.json();
@@ -201,7 +272,7 @@ export default function App() {
     loadPlatformData();
 
     // Default shop (Central Library Kiosk)
-    fetch('/api/v1/public/shops/by-token/CAMPUS-LIB-QR-001')
+    fetch('/api/v1/public/shops/QR_CAMPUS_NORTH_LIB_01')
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.data) {
@@ -211,12 +282,12 @@ export default function App() {
       .catch(() => {
         // Fallback shop state
         setSelectedShop({
-          id: 'shop-lib-01',
-          name: 'Campus Prints — Central Library Kiosk',
-          slug: 'central-library',
-          qrCodeToken: 'CAMPUS-LIB-QR-001',
-          address: 'Main University Library, Ground Floor',
-          city: 'Bangalore',
+          id: '04779a49-d362-4c39-8d6d-a7a7397c83ee',
+          name: 'North Campus Central Library',
+          slug: 'north-library',
+          qrCodeToken: 'QR_CAMPUS_NORTH_LIB_01',
+          address: 'Ground Floor, Central Library, University Campus',
+          city: 'Mumbai',
           isOpen: true,
           rates: [],
         });
@@ -275,7 +346,10 @@ export default function App() {
     if (!selectedShop) return;
     setIsLoadingQueue(true);
     try {
-      const res = await fetch(`/api/v1/print-stations/queue?shopId=${selectedShop.id}`);
+      const headers: Record<string, string> = {};
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
+      const res = await fetch(`/api/v1/print-stations/queue?shopId=${selectedShop.id}`, { headers });
       const data = await res.json();
       if (data.success) setQueue(data.data);
     } finally {
@@ -289,15 +363,18 @@ export default function App() {
       const interval = setInterval(fetchQueue, 4000);
       return () => clearInterval(interval);
     }
-  }, [route, selectedShop]);
+  }, [route, selectedShop, authToken]);
 
   // Onboard New Merchant
   const handleOnboardMerchant = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
       const res = await fetch('/api/v1/platform/merchants', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           businessName: newBizName,
           ownerName: newOwnerName,
@@ -390,7 +467,10 @@ export default function App() {
   const handleGetDownloadTicket = async (jobId: string) => {
     if (!selectedShop) return;
     try {
-      const res = await fetch(`/api/v1/print-stations/jobs/${jobId}/ticket?shopId=${selectedShop.id}`);
+      const headers: Record<string, string> = {};
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
+      const res = await fetch(`/api/v1/print-stations/jobs/${jobId}/download-ticket?shopId=${selectedShop.id}`, { headers });
       const data = await res.json();
       if (data.success) {
         setDownloadTicket({
@@ -407,9 +487,12 @@ export default function App() {
   const handleCompleteJob = async (jobId: string) => {
     if (!selectedShop) return;
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
       await fetch(`/api/v1/print-stations/jobs/${jobId}/complete?shopId=${selectedShop.id}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: '{}',
       });
       setDownloadTicket(null);
@@ -425,7 +508,43 @@ export default function App() {
       {/* 1. MASTER SAAS LAUNCHPAD & ECOSYSTEM DIRECTORY (ROUTE: /) */}
       {/* ========================================================================= */}
       {route === 'hub' && (
-        <div style={{ flex: 1, maxWidth: '1400px', width: '100%', margin: '0 auto', padding: '40px 24px' }}>
+        <div style={{ flex: 1, maxWidth: '1400px', width: '100%', margin: '0 auto', padding: '32px 24px 60px' }}>
+          {/* Top Bar with Live RBAC Session */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '36px', paddingBottom: '20px', borderBottom: '1px solid var(--border-subtle)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Printer size={20} color="white" />
+              </div>
+              <div>
+                <span style={{ fontWeight: 800, fontSize: '1.2rem', letterSpacing: '-0.02em' }}>QR-PrintHub</span>
+                <span className="badge badge-indigo" style={{ marginLeft: '8px', fontSize: '0.7rem' }}>SaaS v1.0</span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              {authUser ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: 'rgba(255,255,255,0.05)', padding: '6px 14px', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'white' }}>{authUser.name}</div>
+                    <div style={{ fontSize: '0.68rem', color: authUser.role === 'PLATFORM_ADMIN' ? '#818cf8' : authUser.role === 'MERCHANT_ADMIN' ? '#34d399' : '#fbbf24', fontWeight: 700 }}>
+                      {authUser.role}
+                    </div>
+                  </div>
+                  <button onClick={() => setShowLoginModal(true)} className="btn-secondary" style={{ padding: '6px 10px', fontSize: '0.75rem' }}>
+                    Switch Persona
+                  </button>
+                  <button onClick={handleLogout} className="btn-secondary" style={{ padding: '6px 10px', fontSize: '0.75rem', color: '#f87171' }} title="Logout">
+                    <LogOut size={13} />
+                  </button>
+                </div>
+              ) : (
+                <button onClick={() => setShowLoginModal(true)} className="btn-primary" style={{ padding: '8px 16px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <ShieldCheck size={15} /> RBAC Login / Persona Switcher
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* Hero Banner */}
           <div style={{ textAlign: 'center', marginBottom: '48px' }}>
             <div
@@ -660,14 +779,29 @@ export default function App() {
                     <span style={{ fontSize: '1.25rem', fontWeight: 800 }}>QR-PrintHub Platform Admin</span>
                     <span className="badge badge-indigo">SaaS Executive Control Plane</span>
                   </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>Logged in as admin@qrprinthub.com (Platform Founder)</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
+                    {authUser?.role === 'PLATFORM_ADMIN'
+                      ? `Logged in as ${authUser.name} (${authUser.email})`
+                      : 'Restricted: Requires PLATFORM_ADMIN Role'}
+                  </div>
                 </div>
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <button onClick={() => setShowOnboardModal(true)} className="btn-primary" style={{ padding: '8px 16px', fontSize: '0.85rem' }}>
-                  <PlusCircle size={15} /> Onboard New Print Client
-                </button>
+                {authUser?.role === 'PLATFORM_ADMIN' && (
+                  <button onClick={() => setShowOnboardModal(true)} className="btn-primary" style={{ padding: '8px 16px', fontSize: '0.85rem' }}>
+                    <PlusCircle size={15} /> Onboard New Print Client
+                  </button>
+                )}
+                {authUser ? (
+                  <button onClick={handleLogout} className="btn-secondary" style={{ padding: '8px 12px', fontSize: '0.85rem', color: '#f87171' }}>
+                    <LogOut size={14} /> Logout
+                  </button>
+                ) : (
+                  <button onClick={() => setShowLoginModal(true)} className="btn-primary" style={{ padding: '8px 14px', fontSize: '0.85rem' }}>
+                    <ShieldCheck size={14} /> Log In
+                  </button>
+                )}
                 <button onClick={() => navigateTo('hub')} className="btn-secondary" style={{ padding: '8px 14px', fontSize: '0.85rem' }}>
                   <Layers size={14} /> Ecosystem Hub
                 </button>
@@ -677,6 +811,26 @@ export default function App() {
 
           {/* Platform Admin Body */}
           <main style={{ flex: 1, maxWidth: '1400px', width: '100%', margin: '0 auto', padding: '32px 24px' }}>
+            {authUser?.role !== 'PLATFORM_ADMIN' ? (
+              <div className="glass-panel" style={{ padding: '64px 32px', textAlign: 'center', maxWidth: '700px', margin: '40px auto', border: '1px solid rgba(239, 68, 68, 0.35)' }}>
+                <ShieldAlert size={56} color="#ef4444" style={{ margin: '0 auto 16px' }} />
+                <h3 style={{ fontSize: '1.6rem', fontWeight: 800, marginBottom: '8px' }}>Restricted SaaS Founder Area</h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '24px', lineHeight: 1.5 }}>
+                  This control plane manages platform-wide merchant subscriptions, revenue, and database tenants. Access requires the <code style={{ color: '#818cf8', background: 'rgba(99,102,241,0.15)', padding: '2px 6px', borderRadius: '4px' }}>PLATFORM_ADMIN</code> role.
+                  <br />
+                  Current session: <strong style={{ color: 'white' }}>{authUser ? `${authUser.name} (${authUser.role})` : 'Unauthenticated'}</strong>.
+                </p>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <button onClick={() => handleLogin('admin@qrprinthub.com', 'Password123!')} className="btn-primary" style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Crown size={16} /> Instant Log In as Platform Admin
+                  </button>
+                  <button onClick={() => setShowLoginModal(true)} className="btn-secondary" style={{ padding: '10px 18px' }}>
+                    Switch Account
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '28px' }}>
               <div>
                 <h2 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '6px' }}>SaaS Subscriptions & Platform Revenue</h2>
@@ -684,7 +838,7 @@ export default function App() {
                   Manage commercial print business clients, subscription plans, and platform-wide growth metrics.
                 </p>
               </div>
-              <button onClick={loadPlatformData} className="btn-secondary" style={{ padding: '8px 14px', fontSize: '0.8rem' }}>
+              <button onClick={() => loadPlatformData()} className="btn-secondary" style={{ padding: '8px 14px', fontSize: '0.8rem' }}>
                 <RefreshCw size={14} /> Refresh Metrics
               </button>
             </div>
@@ -883,6 +1037,8 @@ export default function App() {
                 </div>
               </div>
             )}
+              </>
+            )}
           </main>
         </div>
       )}
@@ -904,7 +1060,11 @@ export default function App() {
                     <span style={{ fontSize: '1.25rem', fontWeight: 800 }}>Campus Prints Global</span>
                     <span className="badge badge-emerald">Enterprise Client License</span>
                   </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>Logged in as rajesh@campusprints.com (Business Owner)</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
+                    {authUser?.role === 'MERCHANT_ADMIN' || authUser?.role === 'PLATFORM_ADMIN'
+                      ? `Logged in as ${authUser.name} (${authUser.role})`
+                      : 'Restricted: Requires MERCHANT_ADMIN Role'}
+                  </div>
                 </div>
               </div>
 
@@ -915,6 +1075,15 @@ export default function App() {
                 <button onClick={() => navigateTo('customer', true)} className="btn-primary" style={{ padding: '8px 14px', fontSize: '0.85rem' }}>
                   <QrCode size={15} /> Test Customer QR ↗
                 </button>
+                {authUser ? (
+                  <button onClick={handleLogout} className="btn-secondary" style={{ padding: '8px 12px', fontSize: '0.85rem', color: '#f87171' }} title="Logout">
+                    <LogOut size={14} /> Logout
+                  </button>
+                ) : (
+                  <button onClick={() => setShowLoginModal(true)} className="btn-primary" style={{ padding: '8px 14px', fontSize: '0.85rem' }}>
+                    <ShieldCheck size={14} /> Log In
+                  </button>
+                )}
                 <button onClick={() => navigateTo('hub')} className="btn-secondary" style={{ padding: '8px 12px' }}>
                   <Layers size={14} />
                 </button>
@@ -923,6 +1092,26 @@ export default function App() {
           </nav>
 
           <main style={{ flex: 1, maxWidth: '1400px', width: '100%', margin: '0 auto', padding: '32px 24px' }}>
+            {!authUser || !['MERCHANT_ADMIN', 'PLATFORM_ADMIN'].includes(authUser.role) ? (
+              <div className="glass-panel" style={{ padding: '64px 32px', textAlign: 'center', maxWidth: '700px', margin: '40px auto', border: '1px solid rgba(16, 185, 129, 0.35)' }}>
+                <Lock size={56} color="#10b981" style={{ margin: '0 auto 16px' }} />
+                <h3 style={{ fontSize: '1.6rem', fontWeight: 800, marginBottom: '8px' }}>Merchant Owner Access Required</h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '24px', lineHeight: 1.5 }}>
+                  This dashboard is reserved for print business owners managing their shop rate cards and counter standees. Access requires the <code style={{ color: '#34d399', background: 'rgba(16,185,129,0.15)', padding: '2px 6px', borderRadius: '4px' }}>MERCHANT_ADMIN</code> role.
+                  <br />
+                  Current session: <strong style={{ color: 'white' }}>{authUser ? `${authUser.name} (${authUser.role})` : 'Unauthenticated'}</strong>.
+                </p>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <button onClick={() => handleLogin('rajesh@campusprints.com', 'Password123!')} className="btn-success" style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Building2 size={16} /> Instant Log In as Merchant Owner (Rajesh)
+                  </button>
+                  <button onClick={() => setShowLoginModal(true)} className="btn-secondary" style={{ padding: '10px 18px' }}>
+                    Switch Account
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
             <div style={{ marginBottom: '28px' }}>
               <h2 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '6px' }}>Print Shop Rate Cards & QR Terminals</h2>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
@@ -1010,6 +1199,8 @@ export default function App() {
                 </div>
               </div>
             </div>
+              </>
+            )}
           </main>
         </div>
       )}
@@ -1031,7 +1222,11 @@ export default function App() {
                     <span style={{ fontSize: '1.25rem', fontWeight: 800 }}>Central Library Xerox Counter</span>
                     <span className="badge badge-amber">Staff Operator Terminal</span>
                   </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>Staff: Pooja • Connected to HP LaserJet Pro Enterprise</div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>
+                    {authUser && ['SHOP_STAFF', 'MERCHANT_ADMIN', 'PLATFORM_ADMIN'].includes(authUser.role)
+                      ? `Staff: ${authUser.name} (${authUser.role}) • Connected to HP LaserJet Pro Enterprise`
+                      : 'Restricted: Requires SHOP_STAFF Role'}
+                  </div>
                 </div>
               </div>
 
@@ -1039,6 +1234,15 @@ export default function App() {
                 <button onClick={fetchQueue} className="btn-secondary" style={{ padding: '8px 14px', fontSize: '0.85rem' }}>
                   <RefreshCw size={14} className={isLoadingQueue ? 'spin' : ''} /> Refresh Queue ({queue.length})
                 </button>
+                {authUser ? (
+                  <button onClick={handleLogout} className="btn-secondary" style={{ padding: '8px 12px', fontSize: '0.85rem', color: '#f87171' }} title="Logout">
+                    <LogOut size={14} /> Logout
+                  </button>
+                ) : (
+                  <button onClick={() => setShowLoginModal(true)} className="btn-primary" style={{ padding: '8px 14px', fontSize: '0.85rem' }}>
+                    <ShieldCheck size={14} /> Log In
+                  </button>
+                )}
                 <button onClick={() => navigateTo('hub')} className="btn-secondary" style={{ padding: '8px 12px' }}>
                   <Layers size={14} />
                 </button>
@@ -1047,6 +1251,26 @@ export default function App() {
           </nav>
 
           <main style={{ flex: 1, maxWidth: '1400px', width: '100%', margin: '0 auto', padding: '32px 24px' }}>
+            {!authUser || !['SHOP_STAFF', 'MERCHANT_ADMIN', 'PLATFORM_ADMIN'].includes(authUser.role) ? (
+              <div className="glass-panel" style={{ padding: '64px 32px', textAlign: 'center', maxWidth: '700px', margin: '40px auto', border: '1px solid rgba(245, 158, 11, 0.35)' }}>
+                <Lock size={56} color="#f59e0b" style={{ margin: '0 auto 16px' }} />
+                <h3 style={{ fontSize: '1.6rem', fontWeight: 800, marginBottom: '8px' }}>Counter Staff Operator Access Required</h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '24px', lineHeight: 1.5 }}>
+                  This dispatcher requires authenticated shop staff credentials to claim print jobs and trigger ephemeral PDF wipes. Access requires the <code style={{ color: '#fbbf24', background: 'rgba(245,158,11,0.15)', padding: '2px 6px', borderRadius: '4px' }}>SHOP_STAFF</code> role.
+                  <br />
+                  Current session: <strong style={{ color: 'white' }}>{authUser ? `${authUser.name} (${authUser.role})` : 'Unauthenticated'}</strong>.
+                </p>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <button onClick={() => handleLogin('pooja@campusprints.com', 'Password123!')} className="btn-warning" style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', gap: '8px', background: '#f59e0b', color: '#000', fontWeight: 700 }}>
+                    <Printer size={16} /> Instant Log In as Shop Staff (Pooja)
+                  </button>
+                  <button onClick={() => setShowLoginModal(true)} className="btn-secondary" style={{ padding: '10px 18px' }}>
+                    Switch Account
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
               <div>
                 <h2 style={{ fontSize: '1.8rem', fontWeight: 800, marginBottom: '4px' }}>Incoming Customer Print Queue</h2>
@@ -1113,6 +1337,8 @@ export default function App() {
                   </div>
                 ))}
               </div>
+            )}
+              </>
             )}
           </main>
         </div>
@@ -1392,7 +1618,258 @@ export default function App() {
         >
           🏠 Hub
         </button>
+
+        <div style={{ width: '1px', height: '18px', background: 'var(--border-subtle)', margin: '0 4px' }} />
+
+        {authUser ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span
+              className={authUser.role === 'PLATFORM_ADMIN' ? 'badge badge-indigo' : authUser.role === 'MERCHANT_ADMIN' ? 'badge badge-emerald' : 'badge badge-amber'}
+              style={{ padding: '4px 8px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+              title={`Logged in as ${authUser.email} (${authUser.role})`}
+            >
+              <UserCheck size={12} />
+              {authUser.role === 'PLATFORM_ADMIN' ? '👑 Admin' : authUser.role === 'MERCHANT_ADMIN' ? '🏢 Merchant' : '🖨️ Staff'}: {authUser.name}
+            </span>
+            <button
+              onClick={() => setShowLoginModal(true)}
+              className="btn-secondary"
+              style={{ padding: '4px 8px', fontSize: '0.7rem' }}
+              title="Switch role / account"
+            >
+              Switch
+            </button>
+            <button
+              onClick={handleLogout}
+              className="btn-secondary"
+              style={{ padding: '4px 8px', fontSize: '0.7rem', color: '#f87171' }}
+              title="Sign out"
+            >
+              <LogOut size={12} />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowLoginModal(true)}
+            className="btn-primary"
+            style={{ padding: '4px 12px', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '5px' }}
+          >
+            <Lock size={12} /> Sign In / Switch Role
+          </button>
+        )}
       </div>
+
+      {/* ========================================================================= */}
+      {/* RBAC AUTHENTICATION & PERSONA SWITCHER MODAL */}
+      {/* ========================================================================= */}
+      {showLoginModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.78)',
+            backdropFilter: 'blur(10px)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowLoginModal(false);
+          }}
+        >
+          <div
+            className="glass-panel"
+            style={{
+              maxWidth: '520px',
+              width: '100%',
+              padding: '32px',
+              borderRadius: 'var(--radius-lg)',
+              border: '1px solid rgba(99, 102, 241, 0.35)',
+              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.7)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'rgba(99, 102, 241, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Lock size={20} color="#818cf8" />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 800 }}>RBAC Portal Sign In</h3>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)' }}>Role-Based Access Control & Multi-Tenant Guard</div>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowLoginModal(false)}
+                className="btn-secondary"
+                style={{ width: '32px', height: '32px', padding: 0, borderRadius: '50%', fontSize: '1.1rem', lineHeight: 1 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Quick 1-Click Role Demonstrator Chips */}
+            <div style={{ marginBottom: '24px' }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Instant Demo Personas
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {/* Platform Admin Chip */}
+                <button
+                  type="button"
+                  onClick={() => handleLogin('admin@qrprinthub.com', 'Password123!')}
+                  disabled={isLoggingIn}
+                  className="glass-panel glass-panel-interactive"
+                  style={{
+                    padding: '12px 14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    border: '1px solid rgba(99, 102, 241, 0.3)',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(99, 102, 241, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Crown size={16} color="#818cf8" />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'white' }}>Platform Super Admin</div>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>admin@qrprinthub.com • Global Scope</div>
+                    </div>
+                  </div>
+                  <span className="badge badge-indigo" style={{ fontSize: '0.7rem' }}>PLATFORM_ADMIN</span>
+                </button>
+
+                {/* Merchant Admin Chip */}
+                <button
+                  type="button"
+                  onClick={() => handleLogin('rajesh@campusprints.com', 'Password123!')}
+                  disabled={isLoggingIn}
+                  className="glass-panel glass-panel-interactive"
+                  style={{
+                    padding: '12px 14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(16, 185, 129, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Building2 size={16} color="#34d399" />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'white' }}>Merchant Owner (Rajesh)</div>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>rajesh@campusprints.com • Campus Prints Org</div>
+                    </div>
+                  </div>
+                  <span className="badge badge-emerald" style={{ fontSize: '0.7rem' }}>MERCHANT_ADMIN</span>
+                </button>
+
+                {/* Shop Staff Chip */}
+                <button
+                  type="button"
+                  onClick={() => handleLogin('pooja@campusprints.com', 'Password123!')}
+                  disabled={isLoggingIn}
+                  className="glass-panel glass-panel-interactive"
+                  style={{
+                    padding: '12px 14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    border: '1px solid rgba(245, 158, 11, 0.3)',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(245, 158, 11, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Printer size={16} color="#fbbf24" />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'white' }}>Counter Staff (Pooja)</div>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>pooja@campusprints.com • Central Library Xerox</div>
+                    </div>
+                  </div>
+                  <span className="badge badge-amber" style={{ fontSize: '0.7rem' }}>SHOP_STAFF</span>
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '20px 0' }}>
+              <div style={{ flex: 1, height: '1px', background: 'var(--border-subtle)' }} />
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontWeight: 600 }}>OR ENTER CREDENTIALS</span>
+              <div style={{ flex: 1, height: '1px', background: 'var(--border-subtle)' }} />
+            </div>
+
+            {/* Custom Credentials Form */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleLogin();
+              }}
+              style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}
+            >
+              {loginError && (
+                <div style={{ padding: '10px 14px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.35)', borderRadius: '6px', color: '#f87171', fontSize: '0.85rem' }}>
+                  {loginError}
+                </div>
+              )}
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  style={{ width: '100%', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-subtle)', borderRadius: '6px', padding: '10px 12px', color: 'white', fontSize: '0.9rem' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+                  Password
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  style={{ width: '100%', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-subtle)', borderRadius: '6px', padding: '10px 12px', color: 'white', fontSize: '0.9rem' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowLoginModal(false)}
+                  className="btn-secondary"
+                  style={{ flex: 1, padding: '10px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isLoggingIn}
+                  className="btn-primary"
+                  style={{ flex: 2, padding: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                >
+                  {isLoggingIn ? <RefreshCw size={14} className="spin" /> : <ShieldCheck size={16} />}
+                  {isLoggingIn ? 'Authenticating...' : 'Sign In'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

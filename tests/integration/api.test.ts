@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { FastifyInstance } from 'fastify';
-import { buildServer } from '../../src/server.js';
+import { buildServer } from '../../src/server.ts';
 import { queryClient } from '../../src/core/database/index.js';
 
 describe('QR-PrintHub End-to-End API Suite', () => {
