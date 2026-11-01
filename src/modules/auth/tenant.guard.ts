@@ -1,6 +1,6 @@
-import { FastifyRequest, FastifyReply } from 'fastify';
-import { eq } from 'drizzle-orm';
-import { db, shops } from '../../core/database/index.js';
+import { FastifyRequest, FastifyReply } from "fastify";
+import { eq } from "drizzle-orm";
+import { db, shops } from "../../core/database/index.js";
 
 /**
  * Fastify preHandler hook to enforce shop-level multi-tenant isolation.
@@ -8,20 +8,23 @@ import { db, shops } from '../../core/database/index.js';
  * merchant admins can only access shops within their organization,
  * and platform admins have global oversight.
  */
-export async function enforceShopScope(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+export async function enforceShopScope(
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<void> {
   const user = request.user;
   if (!user) {
     return reply.status(401).send({
       success: false,
       error: {
-        code: 'UNAUTHORIZED',
-        message: 'Authentication required before tenant scoping',
+        code: "UNAUTHORIZED",
+        message: "Authentication required before tenant scoping",
       },
     });
   }
 
   // 1. Platform Admins have global access
-  if (user.role === 'PLATFORM_ADMIN') {
+  if (user.role === "PLATFORM_ADMIN") {
     return;
   }
 
@@ -30,26 +33,28 @@ export async function enforceShopScope(request: FastifyRequest, reply: FastifyRe
   const params = request.params as Record<string, unknown> | undefined;
   const body = request.body as Record<string, unknown> | undefined;
 
-  const requestedShopId = (query?.shopId || params?.shopId || body?.shopId) as string | undefined;
+  const requestedShopId = (query?.shopId || params?.shopId || body?.shopId) as
+    string | undefined;
 
   if (!requestedShopId) {
     return reply.status(400).send({
       success: false,
       error: {
-        code: 'MISSING_SHOP_ID',
-        message: 'shopId must be provided to enforce tenant boundary',
+        code: "MISSING_SHOP_ID",
+        message: "shopId must be provided to enforce tenant boundary",
       },
     });
   }
 
   // 3. Shop Staff: Must strictly match assigned shopId
-  if (user.role === 'SHOP_STAFF') {
+  if (user.role === "SHOP_STAFF") {
     if (user.shopId !== requestedShopId) {
       return reply.status(403).send({
         success: false,
         error: {
-          code: 'CROSS_TENANT_ACCESS_DENIED',
-          message: 'Staff members are strictly restricted to their assigned shop',
+          code: "CROSS_TENANT_ACCESS_DENIED",
+          message:
+            "Staff members are strictly restricted to their assigned shop",
         },
       });
     }
@@ -57,13 +62,13 @@ export async function enforceShopScope(request: FastifyRequest, reply: FastifyRe
   }
 
   // 4. Merchant Admin: Must belong to their merchant organization
-  if (user.role === 'MERCHANT_ADMIN') {
+  if (user.role === "MERCHANT_ADMIN") {
     if (!user.merchantId) {
       return reply.status(403).send({
         success: false,
         error: {
-          code: 'MERCHANT_NOT_CONFIGURED',
-          message: 'User is not associated with any merchant organization',
+          code: "MERCHANT_NOT_CONFIGURED",
+          message: "User is not associated with any merchant organization",
         },
       });
     }
@@ -78,8 +83,8 @@ export async function enforceShopScope(request: FastifyRequest, reply: FastifyRe
       return reply.status(403).send({
         success: false,
         error: {
-          code: 'CROSS_TENANT_ACCESS_DENIED',
-          message: 'Shop does not belong to your merchant organization',
+          code: "CROSS_TENANT_ACCESS_DENIED",
+          message: "Shop does not belong to your merchant organization",
         },
       });
     }
@@ -89,8 +94,8 @@ export async function enforceShopScope(request: FastifyRequest, reply: FastifyRe
   return reply.status(403).send({
     success: false,
     error: {
-      code: 'UNAUTHORIZED_ROLE',
-      message: 'Role is not authorized for shop operations',
+      code: "UNAUTHORIZED_ROLE",
+      message: "Role is not authorized for shop operations",
     },
   });
 }

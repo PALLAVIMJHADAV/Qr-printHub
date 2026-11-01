@@ -1,6 +1,11 @@
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { config } from '../../core/config/index.js';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { config } from "../../core/config/index.js";
 
 export const s3Client = new S3Client({
   endpoint: config.S3_ENDPOINT,
@@ -18,8 +23,8 @@ export class S3Service {
    */
   static async getPresignedUploadUrl(
     storageKey: string,
-    contentType: string = 'application/pdf',
-    expiresInSeconds: number = config.PRESIGNED_URL_EXPIRY_SECONDS
+    contentType: string = "application/pdf",
+    expiresInSeconds: number = config.PRESIGNED_URL_EXPIRY_SECONDS,
   ): Promise<string> {
     const command = new PutObjectCommand({
       Bucket: config.S3_BUCKET_NAME,
@@ -27,7 +32,9 @@ export class S3Service {
       ContentType: contentType,
     });
 
-    return await getSignedUrl(s3Client, command, { expiresIn: expiresInSeconds });
+    return await getSignedUrl(s3Client, command, {
+      expiresIn: expiresInSeconds,
+    });
   }
 
   /**
@@ -35,14 +42,16 @@ export class S3Service {
    */
   static async getPresignedDownloadUrl(
     storageKey: string,
-    expiresInSeconds: number = 60
+    expiresInSeconds: number = 60,
   ): Promise<string> {
     const command = new GetObjectCommand({
       Bucket: config.S3_BUCKET_NAME,
       Key: storageKey,
     });
 
-    return await getSignedUrl(s3Client, command, { expiresIn: expiresInSeconds });
+    return await getSignedUrl(s3Client, command, {
+      expiresIn: expiresInSeconds,
+    });
   }
 
   /**

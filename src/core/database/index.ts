@@ -1,7 +1,7 @@
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
-import { config } from '../config/index.js';
-import * as schema from './schema.js';
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import { config } from "../config/index.js";
+import * as schema from "./schema.js";
 
 // PostgreSQL connection query client
 export const queryClient = postgres(config.DATABASE_URL, {
@@ -13,4 +13,4 @@ export const queryClient = postgres(config.DATABASE_URL, {
 // Drizzle instance with multi-tenant schema
 export const db = drizzle(queryClient, { schema });
 
-export * from './schema.js';
+export * from "./schema.js";

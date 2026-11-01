@@ -1,6 +1,13 @@
-import { eq, and, desc, inArray } from 'drizzle-orm';
-import { db, printJobs, orders, orderItems, documents, auditLogs } from '../../core/database/index.js';
-import { S3Service } from '../documents/s3.service.js';
+import { eq, and, desc, inArray } from "drizzle-orm";
+import {
+  db,
+  printJobs,
+  orders,
+  orderItems,
+  documents,
+  auditLogs,
+} from "../../core/database/index.js";
+import { S3Service } from "../documents/s3.service.js";
 
 export class PrintStationService {
   /**
@@ -22,8 +29,8 @@ export class PrintStationService {
       .where(
         and(
           eq(printJobs.shopId, shopId),
-          inArray(printJobs.status, ['QUEUED', 'PRINTING'])
-        )
+          inArray(printJobs.status, ["QUEUED", "PRINTING"]),
+        ),
       )
       .orderBy(desc(printJobs.createdAt));
 
@@ -45,7 +52,7 @@ export class PrintStationService {
           .where(eq(orderItems.orderId, job.orderId));
 
         return { ...job, items };
-      })
+      }),
     );
 
     return enhancedJobs;
@@ -62,7 +69,7 @@ export class PrintStationService {
       .limit(1);
 
     if (!job) {
-      throw new Error('Print job not found or does not belong to this shop');
+      throw new Error("Print job not found or does not belong to this shop");
     }
 
     // Fetch the document
@@ -77,16 +84,19 @@ export class PrintStationService {
       .limit(1);
 
     if (!item) {
-      throw new Error('Associated document not found');
+      throw new Error("Associated document not found");
     }
 
     // 60-second single-use download token
-    const downloadUrl = await S3Service.getPresignedDownloadUrl(item.storageKey, 60);
+    const downloadUrl = await S3Service.getPresignedDownloadUrl(
+      item.storageKey,
+      60,
+    );
 
     // Update job status to PRINTING
     await db
       .update(printJobs)
-      .set({ status: 'PRINTING', startedAt: new Date() })
+      .set({ status: "PRINTING", startedAt: new Date() })
       .where(eq(printJobs.id, jobId));
 
     return {
@@ -103,25 +113,25 @@ export class PrintStationService {
   static async completeJob(jobId: string, shopId: string) {
     const [job] = await db
       .update(printJobs)
-      .set({ status: 'COMPLETED', completedAt: new Date() })
+      .set({ status: "COMPLETED", completedAt: new Date() })
       .where(and(eq(printJobs.id, jobId), eq(printJobs.shopId, shopId)))
       .returning();
 
     if (!job) {
-      throw new Error('Print job not found');
+      throw new Error("Print job not found");
     }
 
     // Mark order complete
     await db
       .update(orders)
-      .set({ status: 'COMPLETED', updatedAt: new Date() })
+      .set({ status: "COMPLETED", updatedAt: new Date() })
       .where(eq(orders.id, job.orderId));
 
     // Audit log
     await db.insert(auditLogs).values({
       shopId,
-      actorType: 'STAFF',
-      action: 'JOB_COMPLETED',
+      actorType: "STAFF",
+      action: "JOB_COMPLETED",
       metadata: { printJobId: job.id, orderId: job.orderId },
     });
 
@@ -138,18 +148,24 @@ export class PrintStationService {
     for (const item of items) {
       try {
         await S3Service.deleteDocument(item.storageKey);
-        await db.update(documents).set({ status: 'PURGED' }).where(eq(documents.id, item.docId));
+        await db
+          .update(documents)
+          .set({ status: "PURGED" })
+          .where(eq(documents.id, item.docId));
         await db.insert(auditLogs).values({
           shopId,
-          actorType: 'SYSTEM',
-          action: 'DOCUMENT_PURGED',
-          metadata: { documentId: item.docId, reason: 'JOB_COMPLETED' },
+          actorType: "SYSTEM",
+          action: "DOCUMENT_PURGED",
+          metadata: { documentId: item.docId, reason: "JOB_COMPLETED" },
         });
       } catch (err) {
-        console.error(`Failed to delete document ${item.docId} upon job completion:`, err);
+        console.error(
+          `Failed to delete document ${item.docId} upon job completion:`,
+          err,
+        );
       }
     }
 
-    return { success: true, jobId: job.id, status: 'COMPLETED' };
+    return { success: true, jobId: job.id, status: "COMPLETED" };
   }
 }

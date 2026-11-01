@@ -1,6 +1,13 @@
-import { eq, and } from 'drizzle-orm';
-import { db, orders, orderItems, printJobs, documents, auditLogs } from '../../core/database/index.js';
-import { PricingService } from '../pricing/pricing.service.js';
+import { eq, and } from "drizzle-orm";
+import {
+  db,
+  orders,
+  orderItems,
+  printJobs,
+  documents,
+  auditLogs,
+} from "../../core/database/index.js";
+import { PricingService } from "../pricing/pricing.service.js";
 
 export class OrderService {
   /**
@@ -17,9 +24,9 @@ export class OrderService {
   static async createCheckout(params: {
     shopId: string;
     documentId: string;
-    paperSize: 'A4' | 'A3' | 'LEGAL' | 'PHOTO';
-    colorMode: 'BW' | 'COLOR';
-    duplexMode: 'SIMPLEX' | 'DUPLEX';
+    paperSize: "A4" | "A3" | "LEGAL" | "PHOTO";
+    colorMode: "BW" | "COLOR";
+    duplexMode: "SIMPLEX" | "DUPLEX";
     copies: number;
     customerPhone?: string;
     customerEmail?: string;
@@ -28,15 +35,20 @@ export class OrderService {
     const [doc] = await db
       .select()
       .from(documents)
-      .where(and(eq(documents.id, params.documentId), eq(documents.shopId, params.shopId)))
+      .where(
+        and(
+          eq(documents.id, params.documentId),
+          eq(documents.shopId, params.shopId),
+        ),
+      )
       .limit(1);
 
     if (!doc) {
-      throw new Error('Document not found or does not belong to this shop');
+      throw new Error("Document not found or does not belong to this shop");
     }
 
-    if (doc.status === 'PURGED') {
-      throw new Error('Document has expired and was purged');
+    if (doc.status === "PURGED") {
+      throw new Error("Document has expired and was purged");
     }
 
     // 2. Authoritatively calculate price on server
@@ -61,9 +73,9 @@ export class OrderService {
         subtotalAmountCents: quote.totalAmountCents,
         discountAmountCents: 0,
         totalAmountCents: quote.totalAmountCents,
-        currency: 'INR',
-        status: 'PENDING_PAYMENT',
-        paymentGatewayProvider: 'mock',
+        currency: "INR",
+        status: "PENDING_PAYMENT",
+        paymentGatewayProvider: "mock",
         paymentGatewayOrderId: `mock_order_${Date.now()}`,
       })
       .returning();
@@ -75,7 +87,7 @@ export class OrderService {
       paperSize: params.paperSize,
       colorMode: params.colorMode,
       duplexMode: params.duplexMode,
-      pageRange: 'all',
+      pageRange: "all",
       pagesPerCopy: doc.pageCount,
       copies: params.copies,
       unitPriceCents: quote.unitPriceCents,
@@ -85,9 +97,13 @@ export class OrderService {
     // 5. Audit log
     await db.insert(auditLogs).values({
       shopId: params.shopId,
-      actorType: 'CUSTOMER',
-      action: 'ORDER_CHECKOUT_CREATED',
-      metadata: { orderId: order.id, orderCode, totalAmountCents: order.totalAmountCents },
+      actorType: "CUSTOMER",
+      action: "ORDER_CHECKOUT_CREATED",
+      metadata: {
+        orderId: order.id,
+        orderCode,
+        totalAmountCents: order.totalAmountCents,
+      },
     });
 
     return {
@@ -109,7 +125,7 @@ export class OrderService {
     const [order] = await db
       .update(orders)
       .set({
-        status: 'PAID',
+        status: "PAID",
         paymentGatewayPaymentId: paymentId || `mock_pay_${Date.now()}`,
         updatedAt: new Date(),
       })
@@ -117,7 +133,7 @@ export class OrderService {
       .returning();
 
     if (!order) {
-      throw new Error('Order not found');
+      throw new Error("Order not found");
     }
 
     // Automatically create a Print Job in QUEUED status
@@ -126,16 +142,20 @@ export class OrderService {
       .values({
         shopId: order.shopId,
         orderId: order.id,
-        status: 'QUEUED',
+        status: "QUEUED",
       })
       .returning();
 
     // Audit log
     await db.insert(auditLogs).values({
       shopId: order.shopId,
-      actorType: 'SYSTEM',
-      action: 'PAYMENT_RECEIVED',
-      metadata: { orderId: order.id, printJobId: job.id, amountCents: order.totalAmountCents },
+      actorType: "SYSTEM",
+      action: "PAYMENT_RECEIVED",
+      metadata: {
+        orderId: order.id,
+        printJobId: job.id,
+        amountCents: order.totalAmountCents,
+      },
     });
 
     return { order, job };

@@ -1,5 +1,5 @@
-import { eq, or } from 'drizzle-orm';
-import { db, shops, rateCards, merchants } from '../../core/database/index.js';
+import { eq, or } from "drizzle-orm";
+import { db, shops, rateCards, merchants } from "../../core/database/index.js";
 
 export class ShopService {
   /**

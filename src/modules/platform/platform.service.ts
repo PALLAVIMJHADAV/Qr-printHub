@@ -1,6 +1,12 @@
-import bcrypt from 'bcryptjs';
-import { eq, sql } from 'drizzle-orm';
-import { db, merchants, shops, users, orders } from '../../core/database/index.js';
+import bcrypt from "bcryptjs";
+import { eq, sql } from "drizzle-orm";
+import {
+  db,
+  merchants,
+  shops,
+  users,
+  orders,
+} from "../../core/database/index.js";
 
 export class PlatformService {
   /**
@@ -26,8 +32,8 @@ export class PlatformService {
     const merchantList = await db.select().from(merchants);
     const mrrCents = merchantList.reduce((acc, m) => {
       const plan = m.subscriptionTier;
-      if (plan === 'ENTERPRISE') return acc + 1499900;
-      if (plan === 'PRO') return acc + 599900;
+      if (plan === "ENTERPRISE") return acc + 1499900;
+      if (plan === "PRO") return acc + 599900;
       return acc + 249900;
     }, 0);
 
@@ -68,7 +74,7 @@ export class PlatformService {
           ...m,
           shopCount: shopData?.count || 0,
         };
-      })
+      }),
     );
 
     return enhanced;
@@ -81,12 +87,17 @@ export class PlatformService {
     businessName: string;
     ownerEmail: string;
     ownerName: string;
-    subscriptionTier: 'STARTER' | 'PRO' | 'ENTERPRISE';
+    subscriptionTier: "STARTER" | "PRO" | "ENTERPRISE";
     initialShopName: string;
     city: string;
   }) {
-    const slug = params.businessName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
-    const shopSlug = params.initialShopName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const slug = params.businessName
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "-")
+      .replace(/-+/g, "-");
+    const shopSlug = params.initialShopName
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "-");
     const qrToken = `QR_${slug.toUpperCase().slice(0, 8)}_${Date.now().toString().slice(-4)}`;
 
     // 1. Create Merchant Entity
@@ -96,14 +107,14 @@ export class PlatformService {
         name: params.businessName,
         slug,
         email: params.ownerEmail,
-        status: 'ACTIVE',
+        status: "ACTIVE",
         subscriptionTier: params.subscriptionTier,
-        payoutAccount: { status: 'PENDING_VERIFICATION' },
+        payoutAccount: { status: "PENDING_VERIFICATION" },
       })
       .returning();
 
     // 2. Create Owner User
-    const defaultPassword = await bcrypt.hash('Merchant123!', 10);
+    const defaultPassword = await bcrypt.hash("Merchant123!", 10);
     const [owner] = await db
       .insert(users)
       .values({
@@ -111,7 +122,7 @@ export class PlatformService {
         name: params.ownerName,
         email: params.ownerEmail,
         passwordHash: defaultPassword,
-        role: 'MERCHANT_ADMIN',
+        role: "MERCHANT_ADMIN",
       })
       .returning();
 

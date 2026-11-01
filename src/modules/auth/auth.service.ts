@@ -1,6 +1,6 @@
-import bcrypt from 'bcryptjs';
-import { eq } from 'drizzle-orm';
-import { db, users } from '../../core/database/index.js';
+import bcrypt from "bcryptjs";
+import { eq } from "drizzle-orm";
+import { db, users } from "../../core/database/index.js";
 
 export class AuthService {
   /**
@@ -14,12 +14,12 @@ export class AuthService {
       .limit(1);
 
     if (!user) {
-      throw new Error('Invalid email or password');
+      throw new Error("Invalid email or password");
     }
 
     const isValid = await bcrypt.compare(passwordPlain, user.passwordHash);
     if (!isValid) {
-      throw new Error('Invalid email or password');
+      throw new Error("Invalid email or password");
     }
 
     return {

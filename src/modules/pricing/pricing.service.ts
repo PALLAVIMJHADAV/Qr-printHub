@@ -1,13 +1,13 @@
-import { eq, and } from 'drizzle-orm';
-import { db, rateCards } from '../../core/database/index.js';
+import { eq, and } from "drizzle-orm";
+import { db, rateCards } from "../../core/database/index.js";
 
 export interface PricingInput {
   shopId: string;
   pages: number;
   copies: number;
-  colorMode: 'BW' | 'COLOR';
-  duplexMode: 'SIMPLEX' | 'DUPLEX';
-  paperSize: 'A4' | 'A3' | 'LEGAL' | 'PHOTO';
+  colorMode: "BW" | "COLOR";
+  duplexMode: "SIMPLEX" | "DUPLEX";
+  paperSize: "A4" | "A3" | "LEGAL" | "PHOTO";
 }
 
 export interface PricingQuote {
@@ -41,8 +41,8 @@ export class PricingService {
           eq(rateCards.shopId, input.shopId),
           eq(rateCards.paperSize, input.paperSize),
           eq(rateCards.colorMode, input.colorMode),
-          eq(rateCards.duplexMode, input.duplexMode)
-        )
+          eq(rateCards.duplexMode, input.duplexMode),
+        ),
       )
       .limit(1);
 
@@ -51,9 +51,10 @@ export class PricingService {
     if (rateCard) {
       unitPriceCents = rateCard.pricePerPageCents;
     } else {
-      if (input.colorMode === 'COLOR') unitPriceCents = 500;
-      if (input.paperSize === 'A3') unitPriceCents *= 3;
-      if (input.duplexMode === 'DUPLEX') unitPriceCents = Math.round(unitPriceCents * 0.85);
+      if (input.colorMode === "COLOR") unitPriceCents = 500;
+      if (input.paperSize === "A3") unitPriceCents *= 3;
+      if (input.duplexMode === "DUPLEX")
+        unitPriceCents = Math.round(unitPriceCents * 0.85);
     }
 
     const totalPages = pages * copies;
@@ -72,7 +73,7 @@ export class PricingService {
       unitPriceCents,
       subtotalCents: totalAmountCents,
       totalAmountCents,
-      currency: 'INR',
+      currency: "INR",
       expiresAt,
     };
   }
