@@ -3,6 +3,10 @@ import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
+import fastifyStatic from "@fastify/static";
+import path from "node:path";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { config } from "./core/config/index.js";
 import {
@@ -136,12 +140,10 @@ export async function buildServer() {
     const shop = await ShopService.getShopByCodeOrSlug(code);
 
     if (!shop) {
-      return reply
-        .status(404)
-        .send({
-          success: false,
-          error: { message: "Shop not found for this QR code" },
-        });
+      return reply.status(404).send({
+        success: false,
+        error: { message: "Shop not found for this QR code" },
+      });
     }
 
     return reply.send({ success: true, data: shop });
@@ -293,12 +295,10 @@ export async function buildServer() {
     async (request, reply) => {
       const { shopId } = request.query as { shopId?: string };
       if (!shopId) {
-        return reply
-          .status(400)
-          .send({
-            success: false,
-            error: { message: "shopId query parameter is required" },
-          });
+        return reply.status(400).send({
+          success: false,
+          error: { message: "shopId query parameter is required" },
+        });
       }
 
       const queue = await PrintStationService.getQueue(shopId);
@@ -320,12 +320,10 @@ export async function buildServer() {
       const { shopId } = request.query as { shopId?: string };
 
       if (!shopId) {
-        return reply
-          .status(400)
-          .send({
-            success: false,
-            error: { message: "shopId query parameter is required" },
-          });
+        return reply.status(400).send({
+          success: false,
+          error: { message: "shopId query parameter is required" },
+        });
       }
 
       try {
@@ -356,12 +354,10 @@ export async function buildServer() {
       const { shopId } = request.query as { shopId?: string };
 
       if (!shopId) {
-        return reply
-          .status(400)
-          .send({
-            success: false,
-            error: { message: "shopId query parameter is required" },
-          });
+        return reply.status(400).send({
+          success: false,
+          error: { message: "shopId query parameter is required" },
+        });
       }
 
       try {
@@ -455,12 +451,10 @@ export async function buildServer() {
         request.user.merchantId ||
         (request.query as Record<string, unknown>)?.merchantId;
       if (!merchantId || typeof merchantId !== "string") {
-        return reply
-          .status(400)
-          .send({
-            success: false,
-            error: { message: "merchantId is required" },
-          });
+        return reply.status(400).send({
+          success: false,
+          error: { message: "merchantId is required" },
+        });
       }
       const shopsList = await MerchantService.listShops(merchantId);
       return reply.send({ success: true, data: shopsList });
@@ -478,12 +472,10 @@ export async function buildServer() {
     async (request, reply) => {
       const merchantId = request.user.merchantId;
       if (!merchantId) {
-        return reply
-          .status(400)
-          .send({
-            success: false,
-            error: { message: "merchantId is required" },
-          });
+        return reply.status(400).send({
+          success: false,
+          error: { message: "merchantId is required" },
+        });
       }
 
       const schema = z.object({
@@ -526,12 +518,10 @@ export async function buildServer() {
         request.user.merchantId ||
         (request.query as Record<string, unknown>)?.merchantId;
       if (!merchantId || typeof merchantId !== "string") {
-        return reply
-          .status(400)
-          .send({
-            success: false,
-            error: { message: "merchantId is required" },
-          });
+        return reply.status(400).send({
+          success: false,
+          error: { message: "merchantId is required" },
+        });
       }
       const staffList = await MerchantService.listStaff(merchantId);
       return reply.send({ success: true, data: staffList });
@@ -549,12 +539,10 @@ export async function buildServer() {
     async (request, reply) => {
       const merchantId = request.user.merchantId;
       if (!merchantId) {
-        return reply
-          .status(400)
-          .send({
-            success: false,
-            error: { message: "merchantId is required" },
-          });
+        return reply.status(400).send({
+          success: false,
+          error: { message: "merchantId is required" },
+        });
       }
 
       const schema = z.object({
@@ -597,12 +585,10 @@ export async function buildServer() {
     async (request, reply) => {
       const merchantId = request.user.merchantId;
       if (!merchantId) {
-        return reply
-          .status(400)
-          .send({
-            success: false,
-            error: { message: "merchantId is required" },
-          });
+        return reply.status(400).send({
+          success: false,
+          error: { message: "merchantId is required" },
+        });
       }
 
       const { staffId } = request.params as { staffId: string };
@@ -617,6 +603,31 @@ export async function buildServer() {
       }
     },
   );
+
+  // ============================================================================
+  // STATIC FRONTEND ASSETS & SPA ROUTING
+  // ============================================================================
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const clientDistPath = path.resolve(__dirname, "../dist/client");
+
+  if (fs.existsSync(clientDistPath)) {
+    await app.register(fastifyStatic, {
+      root: clientDistPath,
+      prefix: "/",
+    });
+
+    app.setNotFoundHandler((request, reply) => {
+      if (request.raw.url && request.raw.url.startsWith("/api")) {
+        return reply.status(404).send({
+          message: `Route ${request.method}:${request.url} not found`,
+          error: "Not Found",
+          statusCode: 404,
+        });
+      }
+      return reply.sendFile("index.html");
+    });
+  }
 
   return app;
 }
