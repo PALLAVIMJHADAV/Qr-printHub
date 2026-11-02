@@ -22,6 +22,7 @@ import { OrderService } from "./modules/orders/order.service.js";
 import { PrintStationService } from "./modules/print-stations/print-station.service.js";
 import { PlatformService } from "./modules/platform/platform.service.js";
 import { MerchantService } from "./modules/merchants/index.js";
+import { PaymentService } from "./modules/payments/index.js";
 
 export async function buildServer() {
   const app = Fastify({
@@ -29,6 +30,23 @@ export async function buildServer() {
       level: config.NODE_ENV === "test" ? "silent" : "info",
     },
   });
+
+  // Preserve raw body buffer for HMAC cryptographic webhook verification
+  app.addContentTypeParser(
+    "application/json",
+    { parseAs: "buffer" },
+    (req, body, done) => {
+      try {
+        const rawString = body.toString("utf8");
+        (req as any).rawBody = rawString;
+        const json = JSON.parse(rawString);
+        done(null, json);
+      } catch (err: any) {
+        err.statusCode = 400;
+        done(err, undefined);
+      }
+    },
+  );
 
   // 1. Plugins: CORS
   await app.register(cors, {
@@ -263,6 +281,108 @@ export async function buildServer() {
       return reply
         .status(400)
         .send({ success: false, error: { message: err.message } });
+    }
+  });
+
+  // ============================================================================
+  // PAYMENT GATEWAY (Razorpay, Stripe & Mock Checkout Sessions + Webhooks)
+  // ============================================================================
+  app.post("/api/v1/public/payments/create-session", async (request, reply) => {
+    const schema = z.object({
+      orderId: z.string().uuid(),
+      provider: z.enum(["mock", "razorpay", "stripe"]).optional(),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .status(400)
+        .send({ success: false, error: parsed.error.format() });
+    }
+
+    try {
+      const session = await PaymentService.createPaymentSession(
+        parsed.data.orderId,
+        parsed.data.provider,
+      );
+      return reply.send({ success: true, data: session });
+    } catch (err: any) {
+      return reply
+        .status(err.statusCode || 400)
+        .send({ success: false, error: { message: err.message } });
+    }
+  });
+
+  app.post("/api/v1/public/payments/verify", async (request, reply) => {
+    const schema = z.object({
+      orderId: z.string().uuid(),
+      paymentId: z.string().min(1),
+      gatewayOrderId: z.string().min(1),
+      signature: z.string().min(1),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .status(400)
+        .send({ success: false, error: parsed.error.format() });
+    }
+
+    try {
+      const result = await PaymentService.verifyClientSignature(parsed.data);
+      return reply.send({ success: true, data: result });
+    } catch (err: any) {
+      return reply.status(err.statusCode || 400).send({
+        success: false,
+        error: {
+          code: err.code || "VERIFICATION_FAILED",
+          message: err.message,
+        },
+      });
+    }
+  });
+
+  app.post("/api/v1/public/payments/webhook", async (request, reply) => {
+    const rawBody = (request as any).rawBody || JSON.stringify(request.body);
+    const razorpaySig = request.headers["x-razorpay-signature"] as
+      string | undefined;
+    const stripeSig = request.headers["stripe-signature"] as string | undefined;
+    const mockSig = request.headers["x-webhook-signature"] as
+      string | undefined;
+
+    let provider: "razorpay" | "stripe" | "mock" = "mock";
+    let signature = mockSig || "";
+
+    if (razorpaySig) {
+      provider = "razorpay";
+      signature = razorpaySig;
+    } else if (stripeSig) {
+      provider = "stripe";
+      signature = stripeSig;
+    }
+
+    const queryProvider = (request.query as Record<string, string>)?.provider;
+    if (
+      queryProvider === "razorpay" ||
+      queryProvider === "stripe" ||
+      queryProvider === "mock"
+    ) {
+      provider = queryProvider;
+    }
+
+    try {
+      const result = await PaymentService.processWebhook({
+        provider,
+        rawBody,
+        signature,
+        event: request.body,
+      });
+      return reply.send({ success: true, data: result });
+    } catch (err: any) {
+      return reply.status(err.statusCode || 400).send({
+        success: false,
+        error: { code: err.code || "WEBHOOK_FAILED", message: err.message },
+      });
     }
   });
 

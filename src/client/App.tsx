@@ -608,17 +608,12 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           shopId: selectedShop.id,
+          documentId,
+          paperSize,
+          colorMode,
+          duplexMode,
+          copies,
           customerPhone,
-          items: [
-            {
-              documentId,
-              paperSize,
-              colorMode,
-              duplexMode,
-              copies,
-              pageRange: `1-${uploadedFile.pages}`,
-            },
-          ],
         }),
       });
       const orderData = await orderRes.json();
@@ -627,6 +622,14 @@ export default function App() {
         const orderId = orderData.data.orderId;
         const code = orderData.data.orderCode;
 
+        // Create payment session
+        await fetch("/api/v1/public/payments/create-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId, provider: "razorpay" }),
+        });
+
+        // Instant test pay confirmation
         await fetch(`/api/v1/public/orders/${orderId}/pay`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

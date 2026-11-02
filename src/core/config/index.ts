@@ -53,6 +53,11 @@ const envSchema = z.object({
 
   PAYMENT_GATEWAY_PROVIDER: z.string().default("mock"),
   PAYMENT_WEBHOOK_SECRET: z.string().default("mock_webhook_secret_for_hmac"),
+  RAZORPAY_KEY_ID: z.string().default("rzp_test_mockKey123"),
+  RAZORPAY_KEY_SECRET: z.string().default("mock_razorpay_secret_123"),
+  RAZORPAY_WEBHOOK_SECRET: z.string().default("mock_rzp_webhook_secret"),
+  STRIPE_SECRET_KEY: z.string().default("sk_test_mockKey123"),
+  STRIPE_WEBHOOK_SECRET: z.string().default("whsec_mockWebhookSecret123"),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
