@@ -23,6 +23,7 @@ import { PrintStationService } from "./modules/print-stations/print-station.serv
 import { PlatformService } from "./modules/platform/platform.service.js";
 import { MerchantService } from "./modules/merchants/index.js";
 import { PaymentService } from "./modules/payments/index.js";
+import { WhatsAppService } from "./modules/whatsapp/index.js";
 
 export async function buildServer() {
   const app = Fastify({
@@ -382,6 +383,66 @@ export async function buildServer() {
       return reply.status(err.statusCode || 400).send({
         success: false,
         error: { code: err.code || "WEBHOOK_FAILED", message: err.message },
+      });
+    }
+  });
+
+  // ============================================================================
+  // WHATSAPP PRINTING (Meta Cloud API, Twilio & Web Quick-Drop)
+  // ============================================================================
+  app.get("/api/v1/public/whatsapp/webhook", async (request, reply) => {
+    const query = request.query as Record<string, string>;
+    const challenge = WhatsAppService.verifyWebhookChallenge({
+      mode: query["hub.mode"],
+      token: query["hub.verify_token"],
+      challenge: query["hub.challenge"],
+    });
+
+    if (challenge) {
+      return reply.send(challenge);
+    }
+    return reply.status(403).send("Verification token mismatch");
+  });
+
+  app.post("/api/v1/public/whatsapp/webhook", async (request, reply) => {
+    const queryShopId = (request.query as Record<string, string>)?.shopId;
+    try {
+      const result = await WhatsAppService.processGenericWebhook(
+        request.body,
+        queryShopId,
+      );
+      return reply.send({ success: true, data: result });
+    } catch (err: any) {
+      return reply.status(err.statusCode || 400).send({
+        success: false,
+        error: { message: err.message },
+      });
+    }
+  });
+
+  app.post("/api/v1/public/whatsapp/quick-drop", async (request, reply) => {
+    const schema = z.object({
+      shopId: z.string().uuid(),
+      filename: z.string().min(1),
+      senderPhone: z.string().default("+919876543210"),
+      caption: z.string().optional(),
+      pageCount: z.number().int().min(1).default(1),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply
+        .status(400)
+        .send({ success: false, error: parsed.error.format() });
+    }
+
+    try {
+      const result = await WhatsAppService.handleIncomingDocument(parsed.data);
+      return reply.status(201).send({ success: true, data: result });
+    } catch (err: any) {
+      return reply.status(err.statusCode || 400).send({
+        success: false,
+        error: { message: err.message },
       });
     }
   });

@@ -426,6 +426,29 @@ export default function App() {
     }
   };
 
+  const handleSimulateWhatsAppOrder = async () => {
+    if (!selectedShop) return;
+    try {
+      const res = await fetch("/api/v1/public/whatsapp/quick-drop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shopId: selectedShop.id,
+          filename: "Student_Assignment_WhatsApp.pdf",
+          senderPhone: "+91 98765 43210",
+          caption: "2 copies color double sided",
+          pageCount: 5,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchQueue();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
     if (route === "shop_staff") {
       fetchQueue();
@@ -3610,19 +3633,46 @@ export default function App() {
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: "8px",
+                      gap: "12px",
+                      flexWrap: "wrap",
                     }}
                   >
-                    <span className="pulse-dot"></span>
-                    <span
+                    <button
+                      onClick={handleSimulateWhatsAppOrder}
+                      className="btn-secondary"
                       style={{
-                        fontSize: "0.85rem",
-                        color: "#34d399",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        background: "rgba(37, 211, 102, 0.15)",
+                        color: "#25D366",
+                        border: "1px solid rgba(37, 211, 102, 0.3)",
+                        fontSize: "0.8rem",
+                        padding: "6px 14px",
                         fontWeight: 600,
+                        cursor: "pointer",
                       }}
                     >
-                      Live Dispatcher Active
-                    </span>
+                      📱 + Simulate Incoming WhatsApp Print
+                    </button>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                    >
+                      <span className="pulse-dot"></span>
+                      <span
+                        style={{
+                          fontSize: "0.85rem",
+                          color: "#34d399",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Live Dispatcher Active
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -3728,13 +3778,32 @@ export default function App() {
                                 <span className="badge badge-amber">
                                   {job.status}
                                 </span>
+                                {job.customerPhone && (
+                                  <span
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: "4px",
+                                      padding: "3px 8px",
+                                      background: "rgba(37, 211, 102, 0.15)",
+                                      color: "#25D366",
+                                      border:
+                                        "1px solid rgba(37, 211, 102, 0.3)",
+                                      borderRadius: "4px",
+                                      fontSize: "0.78rem",
+                                      fontWeight: 700,
+                                    }}
+                                  >
+                                    📱 WhatsApp ({job.customerPhone})
+                                  </span>
+                                )}
                                 <span
                                   style={{
                                     fontSize: "0.9rem",
                                     color: "var(--text-muted)",
                                   }}
                                 >
-                                  Amount Paid: ₹
+                                  Amount: ₹
                                   {(job.totalAmountCents / 100).toFixed(2)}
                                 </span>
                               </div>
@@ -4075,6 +4144,48 @@ export default function App() {
                   </div>
                 </div>
               )}
+
+              <div
+                style={{
+                  marginTop: "16px",
+                  paddingTop: "14px",
+                  borderTop: "1px solid var(--border-subtle)",
+                  textAlign: "center",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "0.8rem",
+                    color: "var(--text-muted)",
+                    marginBottom: "8px",
+                  }}
+                >
+                  💬 Prefer sending via WhatsApp instead?
+                </div>
+                <a
+                  href={`https://wa.me/919876543210?text=${encodeURIComponent(
+                    `Hi! I am at ${selectedShop?.name || "Campus Print Hub"}, I want to print: `,
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                    width: "100%",
+                    padding: "12px 16px",
+                    background: "#25D366",
+                    color: "#ffffff",
+                    borderRadius: "var(--radius-sm)",
+                    fontWeight: 700,
+                    fontSize: "0.92rem",
+                    textDecoration: "none",
+                  }}
+                >
+                  📱 Send Document Directly via WhatsApp (+91 98765 43210)
+                </a>
+              </div>
             </div>
 
             {/* Step 2: Print Parameters */}

@@ -58,6 +58,8 @@ const envSchema = z.object({
   RAZORPAY_WEBHOOK_SECRET: z.string().default("mock_rzp_webhook_secret"),
   STRIPE_SECRET_KEY: z.string().default("sk_test_mockKey123"),
   STRIPE_WEBHOOK_SECRET: z.string().default("whsec_mockWebhookSecret123"),
+  WHATSAPP_VERIFY_TOKEN: z.string().default("qrprint_whatsapp_token_123"),
+  WHATSAPP_BUSINESS_PHONE: z.string().default("+919876543210"),
 });
 
 const parsedEnv = envSchema.safeParse(process.env);
