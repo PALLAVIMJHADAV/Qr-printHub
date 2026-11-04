@@ -428,29 +428,6 @@ export default function App() {
     }
   };
 
-  const handleSimulateWhatsAppOrder = async () => {
-    if (!selectedShop) return;
-    try {
-      const res = await fetch("/api/v1/public/whatsapp/quick-drop", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          shopId: selectedShop.id,
-          filename: "Student_Assignment_WhatsApp.pdf",
-          senderPhone: "+91 98765 43210",
-          caption: "2 copies color double sided",
-          pageCount: 5,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        fetchQueue();
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
   useEffect(() => {
     if (route === "shop_staff") {
       fetchQueue();
@@ -3833,24 +3810,6 @@ export default function App() {
                       flexWrap: "wrap",
                     }}
                   >
-                    <button
-                      onClick={handleSimulateWhatsAppOrder}
-                      className="btn-secondary"
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        background: "rgba(37, 211, 102, 0.15)",
-                        color: "#25D366",
-                        border: "1px solid rgba(37, 211, 102, 0.3)",
-                        fontSize: "0.8rem",
-                        padding: "6px 14px",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                      }}
-                    >
-                      📱 + Simulate Incoming WhatsApp Print
-                    </button>
                     <div
                       style={{
                         display: "flex",
@@ -3980,17 +3939,16 @@ export default function App() {
                                       display: "inline-flex",
                                       alignItems: "center",
                                       gap: "4px",
-                                      padding: "3px 8px",
-                                      background: "rgba(37, 211, 102, 0.15)",
-                                      color: "#25D366",
-                                      border:
-                                        "1px solid rgba(37, 211, 102, 0.3)",
+                                      padding: "2px 8px",
+                                      background: "var(--bg-card)",
+                                      color: "var(--text-muted)",
+                                      border: "1px solid var(--border-subtle)",
                                       borderRadius: "4px",
-                                      fontSize: "0.78rem",
-                                      fontWeight: 700,
+                                      fontSize: "0.75rem",
+                                      fontWeight: 500,
                                     }}
                                   >
-                                    📱 WhatsApp ({job.customerPhone})
+                                    Tel: {job.customerPhone}
                                   </span>
                                 )}
                                 <span
@@ -4352,48 +4310,6 @@ export default function App() {
                   </div>
                 </div>
               )}
-
-              <div
-                style={{
-                  marginTop: "16px",
-                  paddingTop: "14px",
-                  borderTop: "1px solid var(--border-subtle)",
-                  textAlign: "center",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: "0.8rem",
-                    color: "var(--text-muted)",
-                    marginBottom: "8px",
-                  }}
-                >
-                  💬 Prefer sending via WhatsApp instead?
-                </div>
-                <a
-                  href={`https://wa.me/919876543210?text=${encodeURIComponent(
-                    `Hi! I am at ${selectedShop?.name || "Campus Print Hub"}, I want to print: `,
-                  )}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "8px",
-                    width: "100%",
-                    padding: "12px 16px",
-                    background: "#25D366",
-                    color: "#ffffff",
-                    borderRadius: "var(--radius-sm)",
-                    fontWeight: 700,
-                    fontSize: "0.92rem",
-                    textDecoration: "none",
-                  }}
-                >
-                  📱 Send Document Directly via WhatsApp (+91 98765 43210)
-                </a>
-              </div>
             </div>
 
             {/* Step 2: Print Parameters */}

@@ -19,9 +19,6 @@
   --accent-primary: #ffffff;
   --accent-text: #09090b;
 
-  --accent-whatsapp: #22c55e;
-  --accent-whatsapp-hover: #16a34a;
-
   --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -106,27 +103,6 @@ body {
 .btn-secondary:hover {
   background: var(--bg-surface-hover);
   border-color: var(--border-hover);
-}
-
-.btn-whatsapp {
-  background: var(--accent-whatsapp);
-  color: #ffffff;
-  font-weight: 600;
-  border: none;
-  border-radius: var(--radius-sm);
-  padding: 10px 16px;
-  font-size: 0.9rem;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  text-decoration: none;
-  transition: background 0.15s ease;
-}
-
-.btn-whatsapp:hover {
-  background: var(--accent-whatsapp-hover);
 }
 
 /* Badges */
