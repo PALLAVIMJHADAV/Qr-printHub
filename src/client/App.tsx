@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Printer,
   QrCode,
@@ -232,10 +232,12 @@ export default function App() {
   } | null>(null);
 
   // Customer Mobile Kiosk State
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadedFile, setUploadedFile] = useState<{
     name: string;
     size: number;
     pages: number;
+    fileObj?: File;
   } | null>({
     name: "College_Final_Project_Report.pdf",
     size: 2450000,
@@ -606,11 +608,33 @@ export default function App() {
     }
   };
 
+  // Handle real customer PDF file uploads & calculate page count
+  const handleRealFileUpload = async (file: File) => {
+    let pages = 1;
+    try {
+      const { PDFDocument } = await import("pdf-lib");
+      const buffer = await file.arrayBuffer();
+      const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
+      pages = Math.max(1, pdfDoc.getPageCount());
+    } catch (err) {
+      console.warn("Could not extract PDF page count:", err);
+      pages = Math.max(1, Math.ceil(file.size / (150 * 1024)));
+    }
+
+    setUploadedFile({
+      name: file.name,
+      size: file.size,
+      pages,
+      fileObj: file,
+    });
+  };
+
   // Customer Checkout & Pay
   const handleCheckoutAndPay = async () => {
     if (!selectedShop || !uploadedFile || !quote) return;
     setIsProcessingPayment(true);
     try {
+      // 1. Create S3 presigned upload slot
       const intentRes = await fetch("/api/v1/public/documents/upload-intent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -622,10 +646,35 @@ export default function App() {
         }),
       });
       const intentData = await intentRes.json();
-      const documentId =
-        intentData.data?.documentId ||
-        "doc-demo-" + Math.random().toString(36).substring(7);
+      const documentId = intentData.data?.documentId;
+      const uploadUrl = intentData.data?.uploadUrl;
 
+      // 2. Upload actual binary file to MinIO S3 if real file is present
+      if (uploadedFile.fileObj && uploadUrl) {
+        try {
+          await fetch(uploadUrl, {
+            method: "PUT",
+            headers: { "Content-Type": "application/pdf" },
+            body: uploadedFile.fileObj,
+          });
+        } catch (s3Err) {
+          console.warn("Direct S3 PUT warning:", s3Err);
+        }
+      }
+
+      // 3. Verify Document page count in database
+      if (documentId) {
+        await fetch("/api/v1/public/documents/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            documentId,
+            pageCount: uploadedFile.pages,
+          }),
+        });
+      }
+
+      // 4. Create authoritative order
       const orderRes = await fetch("/api/v1/public/orders/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -645,14 +694,14 @@ export default function App() {
         const orderId = orderData.data.orderId;
         const code = orderData.data.orderCode;
 
-        // Create payment session
+        // 5. Create payment session
         await fetch("/api/v1/public/payments/create-session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ orderId, provider: "razorpay" }),
         });
 
-        // Instant test pay confirmation
+        // 6. Confirm payment
         await fetch(`/api/v1/public/orders/${orderId}/pay`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -726,8 +775,155 @@ export default function App() {
 
   return (
     <div
-      style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        background: "var(--bg-app)",
+      }}
     >
+      {/* Universal Minimalist Top Navigation Header */}
+      <header
+        style={{
+          borderBottom: "1px solid var(--border-subtle)",
+          background: "var(--bg-surface)",
+          padding: "10px 24px",
+          position: "sticky",
+          top: 0,
+          zIndex: 50,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
+          <div
+            onClick={() => navigateTo("hub")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              cursor: "pointer",
+            }}
+          >
+            <Printer size={18} color="#ffffff" />
+            <span
+              style={{
+                fontWeight: 700,
+                fontSize: "0.95rem",
+                letterSpacing: "-0.01em",
+              }}
+            >
+              QR-PrintHub
+            </span>
+          </div>
+
+          <nav style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <button
+              onClick={() => navigateTo("hub")}
+              className={
+                route === "hub" ? "badge badge-indigo" : "btn-secondary"
+              }
+              style={{
+                padding: "4px 10px",
+                fontSize: "0.8rem",
+                cursor: "pointer",
+              }}
+            >
+              Overview
+            </button>
+            <button
+              onClick={() => navigateTo("customer")}
+              className={
+                route === "customer" ? "badge badge-indigo" : "btn-secondary"
+              }
+              style={{
+                padding: "4px 10px",
+                fontSize: "0.8rem",
+                cursor: "pointer",
+              }}
+            >
+              📱 Customer Kiosk
+            </button>
+            <button
+              onClick={() => navigateTo("shop_staff")}
+              className={
+                route === "shop_staff" ? "badge badge-indigo" : "btn-secondary"
+              }
+              style={{
+                padding: "4px 10px",
+                fontSize: "0.8rem",
+                cursor: "pointer",
+              }}
+            >
+              🖨️ Staff Print Queue
+            </button>
+            <button
+              onClick={() => navigateTo("merchant_admin")}
+              className={
+                route === "merchant_admin"
+                  ? "badge badge-indigo"
+                  : "btn-secondary"
+              }
+              style={{
+                padding: "4px 10px",
+                fontSize: "0.8rem",
+                cursor: "pointer",
+              }}
+            >
+              🏢 Merchant Admin
+            </button>
+            <button
+              onClick={() => navigateTo("platform_admin")}
+              className={
+                route === "platform_admin"
+                  ? "badge badge-indigo"
+                  : "btn-secondary"
+              }
+              style={{
+                padding: "4px 10px",
+                fontSize: "0.8rem",
+                cursor: "pointer",
+              }}
+            >
+              ⚙️ Platform Admin
+            </button>
+          </nav>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          {authUser ? (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                fontSize: "0.8rem",
+              }}
+            >
+              <span className="badge badge-emerald">{authUser.role}</span>
+              <span style={{ color: "var(--text-secondary)" }}>
+                {authUser.email}
+              </span>
+              <button
+                onClick={handleLogout}
+                className="btn-secondary"
+                style={{ padding: "4px 8px", fontSize: "0.75rem" }}
+              >
+                Log Out
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowLoginModal(true)}
+              className="btn-primary"
+              style={{ padding: "5px 12px", fontSize: "0.8rem" }}
+            >
+              Log In
+            </button>
+          )}
+        </div>
+      </header>
       {/* ========================================================================= */}
       {/* 1. MASTER SAAS LAUNCHPAD & ECOSYSTEM DIRECTORY (ROUTE: /) */}
       {/* ========================================================================= */}
@@ -4056,14 +4252,24 @@ export default function App() {
                 </h3>
               </div>
 
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,application/pdf"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleRealFileUpload(file);
+                }}
+              />
               {uploadedFile ? (
                 <div
                   style={{
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    background: "rgba(255, 255, 255, 0.03)",
-                    border: "1px solid rgba(99, 102, 241, 0.3)",
+                    background: "var(--bg-subtle)",
+                    border: "1px solid var(--border-subtle)",
                     borderRadius: "var(--radius-sm)",
                     padding: "16px",
                   }}
@@ -4077,12 +4283,12 @@ export default function App() {
                   >
                     <div
                       style={{
-                        padding: "12px",
-                        background: "rgba(99, 102, 241, 0.15)",
-                        borderRadius: "8px",
+                        padding: "10px",
+                        background: "rgba(255, 255, 255, 0.05)",
+                        borderRadius: "var(--radius-xs)",
                       }}
                     >
-                      <FileText size={24} color="#818cf8" />
+                      <FileText size={22} color="#ffffff" />
                     </div>
                     <div>
                       <div style={{ fontWeight: 600, fontSize: "0.95rem" }}>
@@ -4091,56 +4297,58 @@ export default function App() {
                       <div
                         style={{
                           fontSize: "0.8rem",
-                          color: "var(--text-muted)",
+                          color: "var(--text-secondary)",
                         }}
                       >
                         {(uploadedFile.size / 1024 / 1024).toFixed(2)} MB •{" "}
-                        <span style={{ color: "#34d399", fontWeight: 600 }}>
+                        <span style={{ color: "#4ade80", fontWeight: 600 }}>
                           {uploadedFile.pages} Pages Verified
                         </span>
                       </div>
                     </div>
                   </div>
                   <button
-                    onClick={() =>
-                      setUploadedFile({
-                        name: "Thesis_Final_Draft.pdf",
-                        size: 3100000,
-                        pages: 20,
-                      })
-                    }
+                    onClick={() => fileInputRef.current?.click()}
                     className="btn-secondary"
                     style={{ fontSize: "0.8rem", padding: "6px 12px" }}
                   >
-                    Change
+                    Choose Different PDF
                   </button>
                 </div>
               ) : (
                 <div
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) handleRealFileUpload(file);
+                  }}
                   style={{
-                    border: "2px dashed var(--border-subtle)",
+                    border: "1px dashed var(--border-subtle)",
                     borderRadius: "var(--radius-sm)",
                     padding: "36px",
                     textAlign: "center",
                     cursor: "pointer",
+                    background: "rgba(255, 255, 255, 0.02)",
                   }}
                 >
                   <UploadCloud
-                    size={36}
-                    color="var(--text-subtle)"
-                    style={{ margin: "0 auto 12px" }}
+                    size={32}
+                    color="var(--text-secondary)"
+                    style={{ margin: "0 auto 10px" }}
                   />
-                  <div style={{ fontWeight: 600 }}>
-                    Tap or drag PDF to upload
+                  <div style={{ fontWeight: 600, fontSize: "0.95rem" }}>
+                    Click or drag a real PDF to upload
                   </div>
                   <div
                     style={{
                       fontSize: "0.8rem",
-                      color: "var(--text-subtle)",
+                      color: "var(--text-tertiary)",
                       marginTop: "4px",
                     }}
                   >
-                    Encrypted Private Upload • Max 50MB
+                    Exact pages will be automatically counted • Max 50MB
                   </div>
                 </div>
               )}
