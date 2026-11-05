@@ -117,7 +117,9 @@ function getRouteFromUrl(): PortalRoute {
   if (
     path.includes("/super-admin") ||
     path.includes("/platform") ||
-    search.includes("portal=super-admin")
+    path.includes("/admin") ||
+    search.includes("portal=super-admin") ||
+    search.includes("portal=admin")
   ) {
     return "platform_admin";
   }
@@ -332,6 +334,40 @@ export default function App() {
       if (merchData.success) setMerchantsList(merchData.data);
     } catch (e) {
       console.warn("API fetch warning:", e);
+    }
+  };
+
+  // Platform Super Admin S3 Document Purge Action
+  const [isPurging, setIsPurging] = useState<boolean>(false);
+  const [purgeMessage, setPurgeMessage] = useState<string | null>(null);
+
+  const handlePurgeDocuments = async () => {
+    setIsPurging(true);
+    setPurgeMessage(null);
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+      const res = await fetch("/api/v1/admin/purge-expired", {
+        method: "POST",
+        headers,
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPurgeMessage(
+          `Storage Purge Completed: ${data.data.purgedCount} expired PDF documents cryptographically purged from S3 storage and database.`,
+        );
+        loadPlatformData();
+      } else {
+        setPurgeMessage(
+          `Storage Purge Failed: ${data.error?.message || "Operation failed"}`,
+        );
+      }
+    } catch (e: any) {
+      setPurgeMessage(`Storage Purge Error: ${e.message}`);
+    } finally {
+      setIsPurging(false);
     }
   };
 
@@ -759,148 +795,6 @@ export default function App() {
         background: "var(--bg-app)",
       }}
     >
-      {/* Universal Minimalist Top Navigation Header */}
-      <header
-        style={{
-          borderBottom: "1px solid var(--border-subtle)",
-          background: "var(--bg-surface)",
-          padding: "10px 24px",
-          position: "sticky",
-          top: 0,
-          zIndex: 50,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
-          <div
-            onClick={() => navigateTo("hub")}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              cursor: "pointer",
-            }}
-          >
-            <Printer size={18} color="#ffffff" />
-            <span
-              style={{
-                fontWeight: 700,
-                fontSize: "0.95rem",
-                letterSpacing: "-0.01em",
-              }}
-            >
-              QR-PrintHub
-            </span>
-          </div>
-
-          <nav style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <button
-              onClick={() => navigateTo("hub")}
-              className={
-                route === "hub" ? "badge badge-indigo" : "btn-secondary"
-              }
-              style={{
-                padding: "4px 10px",
-                fontSize: "0.8rem",
-                cursor: "pointer",
-              }}
-            >
-              Overview
-            </button>
-            <button
-              onClick={() => navigateTo("customer")}
-              className={
-                route === "customer" ? "badge badge-indigo" : "btn-secondary"
-              }
-              style={{
-                padding: "4px 10px",
-                fontSize: "0.8rem",
-                cursor: "pointer",
-              }}
-            >
-              📱 Customer Kiosk
-            </button>
-            <button
-              onClick={() => navigateTo("shop_staff")}
-              className={
-                route === "shop_staff" ? "badge badge-indigo" : "btn-secondary"
-              }
-              style={{
-                padding: "4px 10px",
-                fontSize: "0.8rem",
-                cursor: "pointer",
-              }}
-            >
-              🖨️ Staff Print Queue
-            </button>
-            <button
-              onClick={() => navigateTo("merchant_admin")}
-              className={
-                route === "merchant_admin"
-                  ? "badge badge-indigo"
-                  : "btn-secondary"
-              }
-              style={{
-                padding: "4px 10px",
-                fontSize: "0.8rem",
-                cursor: "pointer",
-              }}
-            >
-              🏢 Merchant Admin
-            </button>
-            <button
-              onClick={() => navigateTo("platform_admin")}
-              className={
-                route === "platform_admin"
-                  ? "badge badge-indigo"
-                  : "btn-secondary"
-              }
-              style={{
-                padding: "4px 10px",
-                fontSize: "0.8rem",
-                cursor: "pointer",
-              }}
-            >
-              ⚙️ Platform Admin
-            </button>
-          </nav>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          {authUser ? (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                fontSize: "0.8rem",
-              }}
-            >
-              <span className="badge badge-emerald">{authUser.role}</span>
-              <span style={{ color: "var(--text-secondary)" }}>
-                {authUser.email}
-              </span>
-              <button
-                onClick={handleLogout}
-                className="btn-secondary"
-                style={{ padding: "4px 8px", fontSize: "0.75rem" }}
-              >
-                Log Out
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowLoginModal(true)}
-              className="btn-primary"
-              style={{ padding: "5px 12px", fontSize: "0.8rem" }}
-            >
-              Log In
-            </button>
-          )}
-        </div>
-      </header>
       {/* ========================================================================= */}
       {/* 1. MASTER SAAS LAUNCHPAD & ECOSYSTEM DIRECTORY (ROUTE: /) */}
       {/* ========================================================================= */}
@@ -1743,13 +1637,34 @@ export default function App() {
                 style={{ display: "flex", alignItems: "center", gap: "12px" }}
               >
                 {authUser?.role === "PLATFORM_ADMIN" && (
-                  <button
-                    onClick={() => setShowOnboardModal(true)}
-                    className="btn-primary"
-                    style={{ padding: "8px 16px", fontSize: "0.85rem" }}
-                  >
-                    <PlusCircle size={15} /> Onboard New Print Client
-                  </button>
+                  <>
+                    <button
+                      onClick={handlePurgeDocuments}
+                      disabled={isPurging}
+                      className="btn-secondary"
+                      style={{
+                        padding: "8px 14px",
+                        fontSize: "0.82rem",
+                        color: "#ef4444",
+                        border: "1px solid rgba(239, 68, 68, 0.35)",
+                        cursor: isPurging ? "not-allowed" : "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                      title="Cryptographically purge expired customer PDF files from MinIO S3"
+                    >
+                      <Trash2 size={14} />{" "}
+                      {isPurging ? "Purging S3..." : "Purge S3 Storage"}
+                    </button>
+                    <button
+                      onClick={() => setShowOnboardModal(true)}
+                      className="btn-primary"
+                      style={{ padding: "8px 16px", fontSize: "0.85rem" }}
+                    >
+                      <PlusCircle size={15} /> Onboard New Print Client
+                    </button>
+                  </>
                 )}
                 {authUser ? (
                   <button
@@ -1882,6 +1797,37 @@ export default function App() {
               </div>
             ) : (
               <>
+                {purgeMessage && (
+                  <div
+                    style={{
+                      background: "rgba(99, 102, 241, 0.12)",
+                      border: "1px solid rgba(99, 102, 241, 0.35)",
+                      borderRadius: "var(--radius-sm)",
+                      padding: "12px 18px",
+                      marginBottom: "20px",
+                      fontSize: "0.88rem",
+                      color: "#c7d2fe",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <span>🛡️ {purgeMessage}</span>
+                    <button
+                      onClick={() => setPurgeMessage(null)}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "var(--text-muted)",
+                        cursor: "pointer",
+                        fontSize: "0.85rem",
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+
                 <div
                   style={{
                     display: "flex",
@@ -2053,6 +1999,116 @@ export default function App() {
                       Total end-user transactions processed
                     </div>
                   </div>
+
+                  <div className="glass-panel" style={{ padding: "22px" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        color: "var(--text-subtle)",
+                        fontSize: "0.8rem",
+                        marginBottom: "6px",
+                      }}
+                    >
+                      <span>Platform Commission (5% Take Rate)</span>
+                      <Sparkles size={16} color="#c084fc" />
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "2.2rem",
+                        fontWeight: 800,
+                        color: "#c084fc",
+                      }}
+                    >
+                      ₹
+                      {(
+                        ((platformStats?.totalGmvCents || 0) * 0.05) /
+                        100
+                      ).toLocaleString()}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "0.75rem",
+                        color: "var(--text-subtle)",
+                        marginTop: "4px",
+                      }}
+                    >
+                      Net platform revenue on print transactions
+                    </div>
+                  </div>
+                </div>
+
+                {/* S3 Storage & Security Governance */}
+                <div
+                  className="glass-panel"
+                  style={{
+                    padding: "20px 24px",
+                    marginBottom: "24px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: "16px",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "14px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "38px",
+                        height: "38px",
+                        borderRadius: "8px",
+                        background: "rgba(239, 68, 68, 0.15)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        border: "1px solid rgba(239, 68, 68, 0.3)",
+                      }}
+                    >
+                      <Trash2 size={18} color="#f87171" />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>
+                        MinIO S3 Ephemeral Storage & Retention Policy
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "0.8rem",
+                          color: "var(--text-muted)",
+                        }}
+                      >
+                        Customer PDFs are retained for maximum 2 hours before
+                        cryptographic purge.
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handlePurgeDocuments}
+                    disabled={isPurging}
+                    className="btn-secondary"
+                    style={{
+                      padding: "8px 16px",
+                      fontSize: "0.82rem",
+                      color: "#ef4444",
+                      border: "1px solid rgba(239, 68, 68, 0.4)",
+                      cursor: isPurging ? "not-allowed" : "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      fontWeight: 600,
+                    }}
+                  >
+                    <Trash2 size={14} />
+                    {isPurging
+                      ? "Purging MinIO S3..."
+                      : "Trigger Manual Purge Now"}
+                  </button>
                 </div>
 
                 {/* Subscribed Print Businesses Directory */}
@@ -4717,185 +4773,179 @@ export default function App() {
       )}
 
       {/* ========================================================================= */}
-      {/* PERSISTENT MULTI-WEB APP QUICK-SWITCHER PILL (FLOATING BOTTOM-RIGHT) */}
+      {/* PERSISTENT MULTI-WEB APP QUICK-SWITCHER PILL (ONLY ON LAUNCHPAD HUB) */}
       {/* ========================================================================= */}
-      <div
-        style={{
-          position: "fixed",
-          bottom: "18px",
-          right: "18px",
-          zIndex: 99,
-          background: "rgba(10, 14, 23, 0.94)",
-          backdropFilter: "blur(16px)",
-          border: "1px solid var(--border-subtle)",
-          borderRadius: "var(--radius-full)",
-          padding: "6px 14px",
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-          boxShadow: "0 8px 30px rgba(0,0,0,0.6)",
-        }}
-      >
+      {route === "hub" && (
         <div
           style={{
+            position: "fixed",
+            bottom: "18px",
+            right: "18px",
+            zIndex: 99,
+            background: "rgba(10, 14, 23, 0.94)",
+            backdropFilter: "blur(16px)",
+            border: "1px solid var(--border-subtle)",
+            borderRadius: "var(--radius-full)",
+            padding: "6px 14px",
             display: "flex",
             alignItems: "center",
-            gap: "6px",
-            color: "var(--text-subtle)",
-            fontSize: "0.75rem",
-            fontWeight: 600,
+            gap: "8px",
+            boxShadow: "0 8px 30px rgba(0,0,0,0.6)",
           }}
         >
-          <Globe size={13} color="#818cf8" />
-          <span>Switch Web App:</span>
-        </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              color: "var(--text-subtle)",
+              fontSize: "0.75rem",
+              fontWeight: 600,
+            }}
+          >
+            <Globe size={13} color="#818cf8" />
+            <span>Switch Web App:</span>
+          </div>
 
-        <button
-          onClick={() => navigateTo("platform_admin")}
-          className={
-            route === "platform_admin" ? "badge badge-indigo" : "btn-secondary"
-          }
-          style={{
-            padding: "4px 10px",
-            fontSize: "0.72rem",
-            cursor: "pointer",
-          }}
-          title="Platform Super Admin Portal (/super-admin)"
-        >
-          👑 Super Admin
-        </button>
+          <button
+            onClick={() => navigateTo("platform_admin")}
+            className="btn-secondary"
+            style={{
+              padding: "4px 10px",
+              fontSize: "0.72rem",
+              cursor: "pointer",
+            }}
+            title="Platform Super Admin Portal (/super-admin)"
+          >
+            👑 Super Admin
+          </button>
 
-        <button
-          onClick={() => navigateTo("merchant_admin")}
-          className={
-            route === "merchant_admin" ? "badge badge-emerald" : "btn-secondary"
-          }
-          style={{
-            padding: "4px 10px",
-            fontSize: "0.72rem",
-            cursor: "pointer",
-          }}
-          title="Merchant Business Portal (/merchant)"
-        >
-          🏢 Merchant Client
-        </button>
+          <button
+            onClick={() => navigateTo("merchant_admin")}
+            className="btn-secondary"
+            style={{
+              padding: "4px 10px",
+              fontSize: "0.72rem",
+              cursor: "pointer",
+            }}
+            title="Merchant Business Portal (/merchant)"
+          >
+            🏢 Merchant Client
+          </button>
 
-        <button
-          onClick={() => navigateTo("shop_staff")}
-          className={
-            route === "shop_staff" ? "badge badge-amber" : "btn-secondary"
-          }
-          style={{
-            padding: "4px 10px",
-            fontSize: "0.72rem",
-            cursor: "pointer",
-          }}
-          title="Shop Counter Terminal (/station)"
-        >
-          🖨️ Counter Staff
-        </button>
+          <button
+            onClick={() => navigateTo("shop_staff")}
+            className="btn-secondary"
+            style={{
+              padding: "4px 10px",
+              fontSize: "0.72rem",
+              cursor: "pointer",
+            }}
+            title="Shop Counter Terminal (/station)"
+          >
+            🖨️ Counter Staff
+          </button>
 
-        <button
-          onClick={() => navigateTo("customer")}
-          className={
-            route === "customer" ? "badge badge-indigo" : "btn-secondary"
-          }
-          style={{
-            padding: "4px 10px",
-            fontSize: "0.72rem",
-            cursor: "pointer",
-          }}
-          title="Customer Mobile Kiosk (/kiosk)"
-        >
-          📱 Customer Kiosk
-        </button>
+          <button
+            onClick={() => navigateTo("customer")}
+            className="btn-secondary"
+            style={{
+              padding: "4px 10px",
+              fontSize: "0.72rem",
+              cursor: "pointer",
+            }}
+            title="Customer Mobile Kiosk (/kiosk)"
+          >
+            📱 Customer Kiosk
+          </button>
 
-        <button
-          onClick={() => navigateTo("hub")}
-          className={route === "hub" ? "badge badge-emerald" : "btn-secondary"}
-          style={{
-            padding: "4px 10px",
-            fontSize: "0.72rem",
-            cursor: "pointer",
-          }}
-          title="Master SaaS Ecosystem Hub (/)"
-        >
-          🏠 Hub
-        </button>
+          <button
+            onClick={() => navigateTo("hub")}
+            className="badge badge-emerald"
+            style={{
+              padding: "4px 10px",
+              fontSize: "0.72rem",
+              cursor: "pointer",
+            }}
+            title="Master SaaS Ecosystem Hub (/)"
+          >
+            🏠 Hub
+          </button>
 
-        <div
-          style={{
-            width: "1px",
-            height: "18px",
-            background: "var(--border-subtle)",
-            margin: "0 4px",
-          }}
-        />
+          <div
+            style={{
+              width: "1px",
+              height: "18px",
+              background: "var(--border-subtle)",
+              margin: "0 4px",
+            }}
+          />
 
-        {authUser ? (
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <span
-              className={
-                authUser.role === "PLATFORM_ADMIN"
-                  ? "badge badge-indigo"
+          {authUser ? (
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <span
+                className={
+                  authUser.role === "PLATFORM_ADMIN"
+                    ? "badge badge-indigo"
+                    : authUser.role === "MERCHANT_ADMIN"
+                      ? "badge badge-emerald"
+                      : "badge badge-amber"
+                }
+                style={{
+                  padding: "4px 8px",
+                  fontSize: "0.72rem",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+                title={`Logged in as ${authUser.email} (${authUser.role})`}
+              >
+                <UserCheck size={12} />
+                {authUser.role === "PLATFORM_ADMIN"
+                  ? "👑 Admin"
                   : authUser.role === "MERCHANT_ADMIN"
-                    ? "badge badge-emerald"
-                    : "badge badge-amber"
-              }
+                    ? "🏢 Merchant"
+                    : "🖨️ Staff"}
+                : {authUser.name}
+              </span>
+              <button
+                onClick={() => setShowLoginModal(true)}
+                className="btn-secondary"
+                style={{ padding: "4px 8px", fontSize: "0.7rem" }}
+                title="Switch role / account"
+              >
+                Switch
+              </button>
+              <button
+                onClick={handleLogout}
+                className="btn-secondary"
+                style={{
+                  padding: "4px 8px",
+                  fontSize: "0.7rem",
+                  color: "#f87171",
+                }}
+                title="Sign out"
+              >
+                <LogOut size={12} />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowLoginModal(true)}
+              className="btn-primary"
               style={{
-                padding: "4px 8px",
+                padding: "4px 12px",
                 fontSize: "0.72rem",
                 display: "flex",
                 alignItems: "center",
-                gap: "4px",
+                gap: "5px",
               }}
-              title={`Logged in as ${authUser.email} (${authUser.role})`}
             >
-              <UserCheck size={12} />
-              {authUser.role === "PLATFORM_ADMIN"
-                ? "👑 Admin"
-                : authUser.role === "MERCHANT_ADMIN"
-                  ? "🏢 Merchant"
-                  : "🖨️ Staff"}
-              : {authUser.name}
-            </span>
-            <button
-              onClick={() => setShowLoginModal(true)}
-              className="btn-secondary"
-              style={{ padding: "4px 8px", fontSize: "0.7rem" }}
-              title="Switch role / account"
-            >
-              Switch
+              <Lock size={12} /> Sign In / Switch Role
             </button>
-            <button
-              onClick={handleLogout}
-              className="btn-secondary"
-              style={{
-                padding: "4px 8px",
-                fontSize: "0.7rem",
-                color: "#f87171",
-              }}
-              title="Sign out"
-            >
-              <LogOut size={12} />
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setShowLoginModal(true)}
-            className="btn-primary"
-            style={{
-              padding: "4px 12px",
-              fontSize: "0.72rem",
-              display: "flex",
-              alignItems: "center",
-              gap: "5px",
-            }}
-          >
-            <Lock size={12} /> Sign In / Switch Role
-          </button>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* RBAC AUTHENTICATION & PERSONA SWITCHER MODAL */}
